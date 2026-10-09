@@ -320,8 +320,10 @@ impl EditorPane {
 
         h_flex()
             .justify_between()
-            .px_3()
-            .py_1()
+            // The switch gets the same space on its right as above and below it.
+            .pl_3()
+            .pr_1p5()
+            .py_1p5()
             .gap_2()
             .border_b_1()
             .border_color(cx.theme().border)
