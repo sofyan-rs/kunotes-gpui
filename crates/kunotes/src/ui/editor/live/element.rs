@@ -14,14 +14,17 @@ use std::rc::Rc;
 
 use gpui_kit::{
     App, AvailableSpace, BorderStyle, Bounds, Corners, Element, ElementId, ElementInputHandler,
-    Entity, GlobalElementId, InspectorElementId, IntoElement, LayoutId, PathBuilder, Pixels, Size,
-    Style, TextAlign, Window, fill, outline, point, px, relative, size,
+    Entity, GlobalElementId, InspectorElementId, IntoElement, LayoutId, Pixels, Size, Style,
+    TextAlign, TransformationMatrix, Window, fill, outline, point, px, relative, size,
 };
 use kunotes_core::live_view::LineKind;
 
 use super::LiveEditor;
 use super::layout::{self, DocLayout, FONT_SIZE, LineInput};
 use super::style::Colors;
+
+/// gpui-kit's check icon (embedded in the app with its default icons).
+const CHECK_ICON: &str = "icons/check.svg";
 
 /// Shown in an empty note.
 const PLACEHOLDER: &str = "Start writing…";
@@ -152,7 +155,7 @@ impl Element for LiveElement {
             if bottom < visible.top() || top > visible.bottom() {
                 continue;
             }
-            paint_decorations(line, &doc, origin, &colors, window);
+            paint_decorations(line, &doc, origin, &colors, window, cx);
         }
 
         for rect in doc.selection_rects(selection.clone()) {
@@ -237,6 +240,7 @@ fn paint_decorations(
     origin: gpui_kit::Point<Pixels>,
     colors: &Colors,
     window: &mut Window,
+    cx: &App,
 ) {
     let text_top = origin.y + line.text_top;
     match line.kind {
@@ -261,27 +265,39 @@ fn paint_decorations(
         }
         LineKind::Task { checked } => {
             if let Some(checkbox) = line.checkbox() {
-                paint_checkbox(checkbox + origin, checked, colors, window);
+                paint_checkbox(checkbox + origin, checked, colors, window, cx);
             }
         }
         _ => {}
     }
 }
 
-fn paint_checkbox(bounds: Bounds<Pixels>, checked: bool, colors: &Colors, window: &mut Window) {
+fn paint_checkbox(
+    bounds: Bounds<Pixels>,
+    checked: bool,
+    colors: &Colors,
+    window: &mut Window,
+    cx: &App,
+) {
     let radius = px(1.);
     if checked {
         window.paint_quad(fill(bounds, colors.accent).corner_radii(radius));
-        // The check mark: two strokes, like a ✓.
-        let at =
-            |x: f32, y: f32| bounds.origin + point(bounds.size.width * x, bounds.size.height * y);
-        let mut path = PathBuilder::stroke(px(1.75));
-        path.move_to(at(0.25, 0.52));
-        path.line_to(at(0.43, 0.70));
-        path.line_to(at(0.76, 0.32));
-        match path.build() {
-            Ok(path) => window.paint_path(path, colors.on_accent),
-            Err(error) => log::warn!("Couldn't draw a check mark: {error}"),
+        // The check mark is an icon (a sprite), not a drawn path: GPUI keeps a
+        // window-sized GPU texture around once any path has been drawn.
+        let inset = bounds.size.width * 0.15;
+        let icon = Bounds::new(
+            bounds.origin + point(inset, inset),
+            bounds.size - size(inset * 2., inset * 2.),
+        );
+        if let Err(error) = window.paint_svg(
+            icon,
+            CHECK_ICON.into(),
+            None,
+            TransformationMatrix::unit(),
+            colors.on_accent,
+            cx,
+        ) {
+            log::warn!("Couldn't draw a check mark: {error}");
         }
     } else {
         window.paint_quad(outline(bounds, colors.accent, BorderStyle::Solid).corner_radii(radius));

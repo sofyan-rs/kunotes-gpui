@@ -429,6 +429,7 @@ It shipped in two stages. Stage A (a styled gpui-kit editor with markers faded b
 - `input.rs`: `EntityInputHandler` (typing, IME composition, emoji picker), converting the OS's UTF-16 ranges to UTF-8 byte offsets.
 - `layout.rs`: one shaped `WrappedLine` per line (`text_system().shape_text` with a wrap width). The element uses a *measured* layout (`request_measured_layout`), because the height depends on the width. Also hit-testing (`offset_for_point`), caret position, Up/Down at a kept x, selection rectangles.
 - `style.rs`: fonts and colors from the theme.
+- Drawing rule: **no vector paths** (`paint_path`). GPUI keeps a window-sized GPU texture after the first one (tens of MB). Icons are SVG sprites (`paint_svg`), lines and boxes are quads.
 - `element.rs`: paints code backgrounds, quote bars, rules, checkboxes, the selection, text backgrounds (inline code), text, placeholder and caret; registers the input handler; scrolls the caret into view.
 
 **Rendering rules:**
