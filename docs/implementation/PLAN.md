@@ -182,7 +182,8 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done
 
 ## Phase 8: Packaging and release
 
-- [ ] App icon: design it and export PNG/ICNS/ICO into `packaging/`.
+- [x] App icon: 1024px master at `assets/icon/kunotes.png`. `packaging/make_icons.sh` (macOS: `sips` + `iconutil`, plus `make_ico.py` with only the stdlib) generates `packaging/macos/KuNotes.icns`, `packaging/windows/kunotes.ico` (16–256), and `packaging/linux/icons/hicolor/<size>/apps/kunotes.png` (16–512).
+- [ ] Use the icons: macOS bundle, Windows exe resource, Linux `.desktop` + `.rpm`.
 - [ ] macOS: `.app` bundle (`cargo-bundle` or a script), bundle ID `id.sofyan.KuNotes`, `.dmg`. Codesign + notarize (optional at first).
 - [ ] Windows: embed the icon + manifest (`winresource`), produce a `.msi` (`cargo-wix`) or zip.
 - [ ] Linux (Fedora): `.desktop` file + icon, `.rpm` (`cargo-generate-rpm`). Flatpak optional later.

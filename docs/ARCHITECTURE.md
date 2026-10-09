@@ -106,9 +106,13 @@ kunotes-gpui/
 │               ├── quick_switcher_tests.rs
 │               ├── dialogs.rs         # rename prompt, delete confirm
 │               └── empty_state.rs
-├── assets/                    # app icon and images used at runtime
+├── assets/icon/kunotes.png    # 1024px app icon master
 ├── fixtures/sample-vault/     # sample notes for manual testing
-├── packaging/                 # per-OS bundling files (Phase 8)
+├── packaging/                 # per-OS bundling files
+│   ├── make_icons.sh          # regenerates all icons from the master (macOS)
+│   ├── macos/KuNotes.icns
+│   ├── windows/kunotes.ico
+│   └── linux/icons/hicolor/   # freedesktop icon sizes for Fedora
 ├── docs/
 └── .github/workflows/         # CI
 ```
