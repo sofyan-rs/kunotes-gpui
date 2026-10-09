@@ -25,6 +25,7 @@ If the design changes, update ARCHITECTURE.md in the same change.
 The repo is indexed in codebase-memory as project `Users-sofyan-Dev-Project-Personal-kunotes-gpui`.
 - Explore code with codebase-memory tools first: `search_graph` (find functions, structs, modules), `trace_path` (call chains), `get_code_snippet` (exact source), `get_architecture`, and `search_code`. Use Grep/Read for docs, configs, and before editing.
 - Re-run `index_repository` after adding or moving modules, or when results look stale.
+- After re-indexing, check `adr_present` in the result. Re-indexing sometimes wipes the ADR; if it's `false`, re-save it with `manage_adr` (mode `update`).
 - Architecture decisions are stored as an ADR (`manage_adr`, mode `get`). Update it in the same change as ARCHITECTURE.md when a decision changes.
 
 ## Build / Test
