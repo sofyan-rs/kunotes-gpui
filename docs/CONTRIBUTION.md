@@ -27,7 +27,7 @@ sudo dnf install -y gcc gcc-c++ clang cmake pkgconf-pkg-config \
   libxkbcommon-x11-devel libxcb-devel libX11-devel \
   openssl-devel libzstd-devel vulkan-loader vulkan-validation-layers vulkan-tools
 ```
-- This package list maps gpui-kit's documented Ubuntu dependencies to Fedora names. Confirm it during Phase 0 and fix this section if anything is missing.
+- CI builds with this list in a `fedora:latest` container (plus `vulkan-loader-devel` for linking). Running the app still needs a check on a real Fedora desktop.
 - Running the app needs a Wayland or X11 session and a **working Vulkan driver** (`vulkaninfo` should succeed).
 - The folder picker needs the XDG desktop portal. Fedora Workstation includes `xdg-desktop-portal-gnome` and the KDE spin includes `xdg-desktop-portal-kde`.
 - Other distros aren't supported, but equivalent packages should work.

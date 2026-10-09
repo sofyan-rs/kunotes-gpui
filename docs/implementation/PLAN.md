@@ -6,7 +6,7 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done
 
 ---
 
-## Phase 0: Scaffold and API spike
+## Phase 0: Scaffold and API spike ✅
 
 **Goal:** a hello-world gpui-kit window that builds on all three OSes in CI, plus confirmed answers to every open question in §11.
 
@@ -15,7 +15,7 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done
 - [x] `fixtures/sample-vault/`: nested folders, hidden files, non-md files, and an `Example.md` that uses every markdown element in §6.5 (headings, emphasis, inline code, code block, nested lists, task list, quote, link, rule). Used for manual testing and screenshots.
 - [x] `rust-toolchain.toml` pinned to 1.99.0 (≥ 1.92), with components `rustfmt` and `clippy`.
 - [x] Hello window: `application().with_assets(assets::Assets).run(|cx| { init(cx); open_window(..) })`.
-- [~] CI (GitHub Actions) matrix on `macos-latest`, `windows-latest`, and Linux as a `fedora:latest` container job on `ubuntu-latest`, running `fmt --check`, `clippy -D warnings`, `test --workspace`, and `build --release`. Install the dnf deps in the Fedora container (see CONTRIBUTION.md).
+- [x] CI (GitHub Actions) matrix on `macos-latest`, `windows-latest`, and Linux as a `fedora:latest` container job on `ubuntu-latest`, running `fmt --check`, `clippy -D warnings`, `test --workspace`, and `build --release`. Install the dnf deps in the Fedora container (see CONTRIBUTION.md).
 - [x] Answer §11 from crate source (runtime spikes only where needed):
   - [x] Editor: soft wrap, cursor offset, selection get/set, undoable range replace, markdown highlighting.
   - [x] TextView: task lists, styling hooks.

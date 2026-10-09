@@ -128,6 +128,6 @@ cx.spawn(async move |this, cx| if let Ok(Ok(Some(paths))) = rx.await { .. }).det
 
 | Check | macOS 15.8 | Windows | Fedora |
 |---|---|---|---|
-| Workspace builds (`cargo build`) | ✅ | CI | CI |
-| Hello window opens, no errors in log | ✅ | 🧪 | 🧪 |
-| `cargo test`, `clippy -D warnings` | ✅ | CI | CI |
+| Workspace builds (`cargo build --release`) | ✅ | ✅ CI | ✅ CI (fedora:latest container) |
+| Hello window opens, no errors in log | ✅ | 🧪 needs a real machine | 🧪 needs a real machine (Vulkan) |
+| `cargo test`, `clippy -D warnings` | ✅ | ✅ CI | ✅ CI |
