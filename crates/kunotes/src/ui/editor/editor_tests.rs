@@ -5,6 +5,7 @@
 use std::fs;
 use std::time::Duration;
 
+use gpui_kit::base::input::{Copy, SelectAll};
 use gpui_kit::test::TestWindowExt as _;
 use gpui_kit::{AppContext as _, Entity, TestAppContext};
 use kunotes_core::settings::ViewMode;
@@ -320,4 +321,29 @@ fn source_and_preview_have_a_right_click_menu(cx: &mut TestAppContext) {
     in_window(&s, cx, |window, cx| window.right_click("preview", cx));
     cx.run_until_parked();
     assert!(menu_open(&s, cx), "Preview shows a menu");
+}
+
+#[gpui_kit::test]
+fn preview_menu_select_all_then_copy_includes_tasks(cx: &mut TestAppContext) {
+    let s = setup(cx);
+    fs::write(s.path("Tasks.md"), "# Todo\n- [ ] first\n- [x] second\n").unwrap();
+    open_note(&s, cx, "Tasks.md");
+    in_window(&s, cx, |window, cx| window.click("Preview", cx));
+
+    // The menu sends its actions to the preview, like this.
+    let focus = pane(&s, cx).read_with(cx, |pane, cx| pane.preview_focus(cx));
+    in_window(&s, cx, |window, cx| {
+        focus.dispatch_action(&SelectAll, window, cx);
+        focus.dispatch_action(&Copy, window, cx);
+    });
+
+    let copied = cx
+        .read_from_clipboard()
+        .and_then(|item| item.text())
+        .unwrap_or_default();
+    assert!(copied.contains("Todo"), "{copied:?}");
+    assert!(
+        copied.contains("second"),
+        "task items are copied too: {copied:?}"
+    );
 }

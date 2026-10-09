@@ -366,7 +366,7 @@ With no selection, transforms apply at the cursor position. They fall back to th
 ### 6.5 Preview (`ui/editor/preview.rs`)
 
 - `TextView::markdown("preview", content).scrollable(true)` with selectable text (on by default) and the same 24px side padding as Live and Source.
-- **Right-click menu:** Copy and Select All. `EditorPane` owns the `TextViewState` (rendered with `TextView::new(&state)`) so the menu can read the selection and call `select_all`.
+- **Right-click menu:** Copy and Select All, as actions sent to the preview (`action_context` = the `TextViewState`'s focus handle), so they show their shortcuts. `EditorPane` owns the `TextViewState` (rendered with `TextView::new(&state)`). Copy is enabled by the window-wide `TextSelection::has_selection`, because task items are drawn by nested text views with their own selections; the preview's Copy handler also reads the window-wide selection.
 - **Clickable task checkboxes:** lists with tasks are parsed into a custom block and drawn by us; a click flips `[ ]` ⇄ `[x]` in the note (§6.9).
 - It must render: headings H1–H6, paragraphs, bold, italic, inline code (accent color), links (accent color with underline, opened in the browser via `cx.open_url`), fenced code blocks (muted rounded background, monospace), ordered and unordered lists with nesting, task lists with checked and unchecked boxes, blockquotes (accent left bar, muted text), and thematic breaks.
 - **Throttle:** in Split mode, update the preview at most every ~150ms while typing, so large notes don't re-parse on every keystroke.

@@ -7,14 +7,16 @@
 //! Right-click shows Copy and Select All.
 
 use gpui_kit::assets::IconName;
+use gpui_kit::base::TextSelection;
+use gpui_kit::base::input::{Copy, SelectAll};
 use gpui_kit::base::markdown_ast::Node;
-use gpui_kit::component::menu::{ContextMenuExt as _, PopupMenu, PopupMenuItem};
+use gpui_kit::component::menu::{ContextMenuExt as _, PopupMenu};
 use gpui_kit::component::text::{MarkdownNode, MarkdownParseContext, TextView, TextViewState};
 use gpui_kit::component::{ActiveTheme as _, Icon, Sizable as _, h_flex, v_flex};
 use gpui_kit::{
-    AnyElement, App, ClipboardItem, Context, CursorStyle, Entity, InteractiveElement as _,
-    IntoElement, MouseButton, ParentElement as _, SharedString, Styled as _, TestSupportExt as _,
-    WeakEntity, Window, div, prelude::*, px,
+    AnyElement, App, Context, CursorStyle, Entity, InteractiveElement as _, IntoElement,
+    MouseButton, ParentElement as _, SharedString, Styled as _, TestSupportExt as _, WeakEntity,
+    Window, div, prelude::*, px,
 };
 
 use super::EditorPane;
@@ -43,28 +45,24 @@ pub fn render(state: &Entity<TextViewState>, pane: WeakEntity<EditorPane>) -> im
                 .px_6()
                 .py_4(),
         )
-        .context_menu(move |menu, _, cx| context_menu(menu, &menu_state, cx))
+        .context_menu(move |menu, window, cx| context_menu(menu, &menu_state, window, cx))
 }
 
-/// The right-click menu: Copy (the selected text) and Select All.
+/// The right-click menu: Copy and Select All.
+///
+/// Items are actions sent to the preview (like pressing the keys), so the menu
+/// shows their shortcuts. The selection is checked window-wide: task items
+/// are drawn by small nested previews, which keep their own selections.
 fn context_menu(
     menu: PopupMenu,
     state: &Entity<TextViewState>,
+    window: &mut Window,
     cx: &mut Context<PopupMenu>,
 ) -> PopupMenu {
-    let selected = state.read(cx).selected_text();
-    let copy = PopupMenuItem::new("Copy")
-        .disabled(selected.is_empty())
-        .on_click(move |_, _, cx| {
-            cx.write_to_clipboard(ClipboardItem::new_string(selected.clone()));
-        });
-    let state = state.clone();
-    let select_all = PopupMenuItem::new("Select All").on_click(move |_, window, cx| {
-        let focus = state.read(cx).focus_handle().clone();
-        window.focus(&focus, cx); // so Cmd/Ctrl+C copies it afterwards
-        state.update(cx, |state, cx| state.select_all(cx));
-    });
-    menu.item(copy).item(select_all)
+    let nothing_selected = !TextSelection::has_selection(window, cx);
+    menu.action_context(state.read(cx).focus_handle().clone())
+        .menu_with_disabled("Copy", Box::new(Copy), nothing_selected)
+        .menu("Select All", Box::new(SelectAll))
 }
 
 /// A list that contains at least one task (`- [ ]`).

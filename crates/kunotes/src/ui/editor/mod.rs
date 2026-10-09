@@ -223,6 +223,12 @@ impl EditorPane {
         self.focus(window, cx);
     }
 
+    /// Where the preview's menu sends its actions. For tests.
+    #[cfg(test)]
+    pub fn preview_focus(&self, cx: &App) -> gpui_kit::FocusHandle {
+        self.preview.read(cx).focus_handle().clone()
+    }
+
     /// The selected text. For tests.
     #[cfg(test)]
     pub fn selected_text(&self, cx: &App) -> String {
