@@ -279,3 +279,19 @@ fn clicking_a_task_in_the_preview_ticks_it(cx: &mut TestAppContext) {
         "# Todo\n- [x] first\n- [x] second\n"
     );
 }
+
+#[gpui_kit::test]
+fn right_click_in_live_opens_the_menu_and_moves_the_cursor(cx: &mut TestAppContext) {
+    let s = setup(cx);
+    open_note(&s, cx, "Welcome.md");
+    select(&s, cx, 2..9); // "Welcome"
+
+    // The middle of the editor is below the text: outside the selection.
+    in_window(&s, cx, |window, cx| window.right_click("live-editor", cx));
+
+    in_window(&s, cx, |window, _| {
+        assert!(window.try_find("popup-menu").is_some(), "the menu opens");
+    });
+    let selected = pane(&s, cx).read_with(cx, |pane, cx| pane.selected_text(cx));
+    assert_eq!(selected, "", "the cursor moved to where the click was");
+}

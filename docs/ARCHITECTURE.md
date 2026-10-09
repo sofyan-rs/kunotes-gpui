@@ -108,7 +108,7 @@ kunotes-gpui/
 │               │   ├── preview.rs     # rendered markdown, clickable checkboxes
 │               │   ├── status_bar.rs
 │               │   ├── view_mode_switch.rs
-│               │   └── live/          # custom Live editor: mod, keys, input, layout, style, element
+│               │   └── live/          # custom Live editor: mod, keys, context_menu, input, layout, style, element
 │               ├── editor_area/       # tabs: EditorArea (mod.rs), tab_bar.rs, tests
 │               ├── quick_switcher.rs
 │               ├── quick_switcher_tests.rs
@@ -416,6 +416,7 @@ It shipped in two stages. Stage A (a styled gpui-kit editor with markers faded b
 
 **App (`ui/editor/live/`):**
 - `mod.rs`: the `LiveEditor` entity (buffer, focus, IME marked range, last layout, scroll) and the mouse: click, shift-click, drag-select, double-click word, triple-click line, checkbox click.
+- `context_menu.rs`: right-click menu (Cut, Copy, Paste, Bold, Italic, Link, Select All). Items are actions with `action_context` set to the editor, so they show their shortcuts. Right-click outside the selection moves the cursor first.
 - `keys.rs`: keyboard actions. The root uses gpui-kit's **`Input` key context**, so its bindings (arrows, Home/End, word jumps, delete-word, undo/redo, clipboard, select all, Enter, Tab) work with each OS's usual keys; we only handle the actions.
 - `input.rs`: `EntityInputHandler` (typing, IME composition, emoji picker), converting the OS's UTF-16 ranges to UTF-8 byte offsets.
 - `layout.rs`: one shaped `WrappedLine` per line (`text_system().shape_text` with a wrap width). The element uses a *measured* layout (`request_measured_layout`), because the height depends on the width. Also hit-testing (`offset_for_point`), caret position, Up/Down at a kept x, selection rectangles.

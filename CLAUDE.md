@@ -47,7 +47,7 @@ Rust ≥ 1.92 (required by gpui-kit). Windows needs the MSVC toolchain. Fedora n
   - `vault_store.rs`: the `VaultStore` entity, the single source of truth, which emits `VaultEvent`.
   - `watcher.rs`: `notify` events go through a channel to `refresh`.
   - `platform.rs`: the **only** place for `#[cfg(target_os)]` and OS wording.
-  - `ui/`: views grouped by feature: `workspace.rs`, `title_bar.rs`, `sidebar/` (`mod.rs`, `file_tree.rs`, `inline_edit.rs`, `keyboard.rs`, `context_menu.rs`), `editor/` (`mod.rs` = EditorPane, `markdown_style.rs` = Source styling, `view_mode_switch.rs`, `formatter_bar.rs`, `preview.rs`, `status_bar.rs`, `live/` = custom Live editor: `mod.rs`, `keys.rs`, `input.rs`, `layout.rs`, `style.rs`, `element.rs`), `editor_area/` (tabs: `mod.rs` = EditorArea, `tab_bar.rs`), `quick_switcher.rs`, `dialogs.rs`, `empty_state.rs`. Tab rules are pure in `kunotes-core/src/tabs.rs`.
+  - `ui/`: views grouped by feature: `workspace.rs`, `title_bar.rs`, `sidebar/` (`mod.rs`, `file_tree.rs`, `inline_edit.rs`, `keyboard.rs`, `context_menu.rs`), `editor/` (`mod.rs` = EditorPane, `markdown_style.rs` = Source styling, `view_mode_switch.rs`, `formatter_bar.rs`, `preview.rs`, `status_bar.rs`, `live/` = custom Live editor: `mod.rs`, `keys.rs`, `context_menu.rs`, `input.rs`, `layout.rs`, `style.rs`, `element.rs`), `editor_area/` (tabs: `mod.rs` = EditorArea, `tab_bar.rs`), `quick_switcher.rs`, `dialogs.rs`, `empty_state.rs`. Tab rules are pure in `kunotes-core/src/tabs.rs`.
 
 Structure rules (ARCHITECTURE §3): the codebase must stay readable for engineers new to Rust.
 - Start with one file; make a folder (with `mod.rs`) only when a module needs several files.

@@ -6,21 +6,24 @@
 //!
 //! - this file: the editor's state and the mouse
 //! - `keys.rs`: keyboard actions (arrows, delete, undo, clipboard)
+//! - `context_menu.rs`: the right-click menu
 //! - `input.rs`: the OS text input (typing, IME)
 //! - `layout.rs`: places each line; `style.rs`: its fonts and colors
 //! - `element.rs`: draws everything
 
+mod context_menu;
 mod element;
 mod input;
 mod keys;
 mod layout;
 mod style;
 
+use gpui_kit::component::menu::ContextMenuExt as _;
 use gpui_kit::{
     Bounds, Context, CursorStyle, EventEmitter, FocusHandle, Focusable, InteractiveElement as _,
     IntoElement, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, ParentElement as _,
-    Pixels, Point, Render, ScrollHandle, StatefulInteractiveElement as _, Styled as _, Window, div,
-    prelude::FluentBuilder as _, px,
+    Pixels, Point, Render, ScrollHandle, StatefulInteractiveElement as _, Styled as _,
+    TestSupportExt as _, Window, div, prelude::FluentBuilder as _, px,
 };
 use kunotes_core::live_buffer::LiveBuffer;
 
@@ -251,6 +254,25 @@ impl LiveEditor {
         }
     }
 
+    /// Right-click: focus, and move the cursor there unless the click is inside
+    /// the selection (so "Copy" in the menu copies what was selected).
+    fn on_right_mouse_down(
+        &mut self,
+        event: &MouseDownEvent,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.focus(window, cx);
+        let Some(offset) = self.offset_at(event.position) else {
+            return;
+        };
+        let selection = self.buffer.selection();
+        if !(selection.start <= offset && offset <= selection.end && !selection.is_empty()) {
+            self.buffer.move_to(offset, false);
+            self.moved(cx);
+        }
+    }
+
     fn on_mouse_up(&mut self, _: &MouseUpEvent, _: &mut Window, _: &mut Context<Self>) {
         self.selecting = false;
     }
@@ -260,6 +282,7 @@ impl Render for LiveEditor {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         div()
             .id("live-editor")
+            .test_support() // lets UI tests find and click it
             .key_context(KEY_CONTEXT)
             .track_focus(&self.focus_handle)
             .size_full()
@@ -267,6 +290,7 @@ impl Render for LiveEditor {
             .track_scroll(&self.scroll_handle)
             .cursor(CursorStyle::IBeam)
             .on_mouse_down(MouseButton::Left, cx.listener(Self::on_mouse_down))
+            .on_mouse_down(MouseButton::Right, cx.listener(Self::on_right_mouse_down))
             .on_mouse_move(cx.listener(Self::on_mouse_move))
             .on_mouse_up(MouseButton::Left, cx.listener(Self::on_mouse_up))
             .on_mouse_up_out(MouseButton::Left, cx.listener(Self::on_mouse_up))
@@ -280,5 +304,10 @@ impl Render for LiveEditor {
                     .pb(px(120.))
                     .child(LiveElement::new(cx.entity())),
             )
+            // Right-click menu, see `context_menu.rs`.
+            .context_menu({
+                let editor = cx.entity();
+                move |menu, _, cx| context_menu::build(menu, &editor, cx)
+            })
     }
 }

@@ -10,13 +10,14 @@ use gpui_kit::base::input::{
     SelectToEndOfLine, SelectToNextWordEnd, SelectToPreviousWordStart, SelectToStart,
     SelectToStartOfLine, Undo,
 };
-use gpui_kit::{ClipboardItem, Context, Div, InteractiveElement as _, Stateful, Window};
+use gpui_kit::{ClipboardItem, Context, InteractiveElement, Window};
 use kunotes_core::live_buffer::LiveBuffer;
 
 use super::LiveEditor;
 
 /// Connects every action below to the editor's root element.
-pub fn bind(root: Stateful<Div>, cx: &mut Context<LiveEditor>) -> Stateful<Div> {
+/// (Generic so it works on the root element in tests too, where it is wrapped.)
+pub fn bind<E: InteractiveElement>(root: E, cx: &mut Context<LiveEditor>) -> E {
     root.on_action(cx.listener(LiveEditor::backspace))
         .on_action(cx.listener(LiveEditor::delete))
         .on_action(cx.listener(LiveEditor::delete_word))
