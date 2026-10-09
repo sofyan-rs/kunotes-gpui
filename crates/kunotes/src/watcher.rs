@@ -86,10 +86,18 @@ fn watch_os(
             Ok(events) => {
                 // Ignore changes that only touch hidden paths: `.git`, `.obsidian`,
                 // and our own `.name.kunotes.tmp` files from saving.
-                let visible = events
-                    .iter()
-                    .flat_map(|event| event.paths.iter())
-                    .any(|path| roots.iter().any(|root| !is_hidden_within(root, path)));
+                // An event for the vault folder itself (macOS reports these, e.g. for
+                // its creation or metadata) isn't a change to any note; the events
+                // for the files inside carry their own paths. A "rescan" event means
+                // the OS dropped events, so it always counts.
+                let visible = events.iter().any(|event| {
+                    event.need_rescan()
+                        || event.paths.iter().any(|path| {
+                            roots
+                                .iter()
+                                .any(|root| path != root && !is_hidden_within(root, path))
+                        })
+                });
                 if visible {
                     on_signal(Signal::Changed);
                 }
