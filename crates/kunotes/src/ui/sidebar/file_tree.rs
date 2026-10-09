@@ -38,22 +38,46 @@ const ROW_INDENT: f32 = 14.;
 struct DraggedEntry {
     path: PathBuf,
     name: String,
+    is_dir: bool,
 }
 
-/// The small label that follows the mouse while dragging.
-struct DragPreview(String);
+/// The small chip that follows the mouse while dragging: icon + name.
+struct DragPreview {
+    name: String,
+    is_dir: bool,
+}
 
 impl Render for DragPreview {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        div()
+        let theme = cx.theme();
+        let (icon, icon_color) = if self.is_dir {
+            (IconName::Folder, theme.blue)
+        } else {
+            (IconName::FileText, theme.muted_foreground)
+        };
+        h_flex()
+            .gap_1p5()
             .px_2()
             .py_1()
+            .max_w(px(280.))
             .rounded_md()
             .text_sm()
-            .bg(cx.theme().popover)
+            // Explicit colors: a drag preview doesn't inherit the tree's text color,
+            // so without these the name is drawn dark-on-dark.
+            .bg(theme.popover)
+            .text_color(theme.popover_foreground)
             .border_1()
-            .border_color(cx.theme().border)
-            .child(self.0.clone())
+            .border_color(theme.border)
+            .shadow_md()
+            .child(Icon::new(icon).small().text_color(icon_color))
+            .child(
+                div()
+                    .min_w_0()
+                    .overflow_hidden()
+                    .whitespace_nowrap()
+                    .text_ellipsis()
+                    .child(self.name.clone()),
+            )
     }
 }
 
@@ -159,8 +183,12 @@ impl FileTree {
             .pr_2()
             .gap_1()
             .text_sm()
-            .child(div().w(px(14.)))
-            .child(Icon::new(icon).small().text_color(color))
+            .child(div().flex_none().w(px(14.)))
+            .child(
+                div()
+                    .flex_none()
+                    .child(Icon::new(icon).small().text_color(color)),
+            )
             .children(self.render_name_input(cx))
             .into_any_element()
     }
@@ -222,15 +250,26 @@ impl FileTree {
             .as_ref()
             .and_then(|edit| edit.renaming())
             .is_some_and(|path| path == row.path);
+        // A long name shrinks and ends with "…" instead of pushing the icon aside.
+        let plain_label = || {
+            div()
+                .flex_1()
+                .min_w_0()
+                .overflow_hidden()
+                .whitespace_nowrap()
+                .text_ellipsis()
+                .child(row.name.clone())
+                .into_any_element()
+        };
         let label: AnyElement = if renaming {
-            self.render_name_input(cx)
-                .unwrap_or_else(|| row.name.clone().into_any_element())
+            self.render_name_input(cx).unwrap_or_else(plain_label)
         } else {
-            row.name.clone().into_any_element()
+            plain_label()
         };
         let drag = DraggedEntry {
             path: row.path.clone(),
             name: row.name.clone(),
+            is_dir: row.is_dir,
         };
         let click_row = row.clone();
         let drop_folder = row.path.clone();
@@ -242,18 +281,30 @@ impl FileTree {
             .pl(px(6. + ROW_INDENT * row.depth as f32))
             .child(
                 h_flex()
+                    .w_full()
+                    .min_w_0()
                     .gap_1()
                     .text_sm()
                     // Files get an empty slot where folders have a chevron, so names line up.
-                    .child(div().w(px(14.)).children(chevron))
-                    .child(Icon::new(icon).small().text_color(icon_color))
+                    // `flex_none`: the slot and icon keep their size however long the name is.
+                    .child(div().flex_none().w(px(14.)).children(chevron))
+                    .child(
+                        div()
+                            .id(icon_id(&row.path))
+                            .test_support()
+                            .flex_none()
+                            .child(Icon::new(icon).small().text_color(icon_color)),
+                    )
                     .child(label),
             )
             .on_click(cx.listener(move |this, event, window, cx| {
                 this.on_row_click(&click_row, event, window, cx)
             }))
             .on_drag(drag, |entry, _, _, cx| {
-                cx.new(|_| DragPreview(entry.name.clone()))
+                cx.new(|_| DragPreview {
+                    name: entry.name.clone(),
+                    is_dir: entry.is_dir,
+                })
             });
 
         // Every row catches drops, so a refused drop never falls through to the
@@ -347,6 +398,11 @@ impl Render for FileTree {
 /// ID of a row's outer wrapper, e.g. `row:/vault/Projects`.
 pub fn row_id(path: &Path) -> ElementId {
     ElementId::Name(format!("row:{}", path.display()).into())
+}
+
+/// ID of a row's icon, used by tests to check that rows line up.
+pub fn icon_id(path: &Path) -> ElementId {
+    ElementId::Name(format!("icon:{}", path.display()).into())
 }
 
 fn item_id(path: &Path) -> ElementId {

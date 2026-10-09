@@ -7,7 +7,7 @@ use gpui_kit::component::WindowExt as _;
 use gpui_kit::test::TestWindowExt as _;
 use gpui_kit::{TestAppContext, px};
 
-use super::file_tree::row_id;
+use super::file_tree::{icon_id, row_id};
 use std::path::Path;
 
 use crate::ui::test_helpers::{Setup, in_window, is_expanded, selected, setup};
@@ -287,4 +287,20 @@ fn clicking_elsewhere_confirms_and_an_empty_name_cancels(cx: &mut TestAppContext
     in_window(&s, cx, |window, cx| window.click(row_id(&welcome), cx));
     in_window(&s, cx, |_, _| {});
     assert!(!name_field_open(&s, cx), "an empty field just closes");
+}
+
+#[gpui_kit::test]
+fn a_long_name_does_not_shift_its_row(cx: &mut TestAppContext) {
+    let s = setup(cx);
+    let long = s.path(&format!("{}.md", "Very long note name ".repeat(8).trim()));
+    fs::write(&long, "").unwrap();
+    s.vault.update(cx, |vault, cx| vault.refresh(cx));
+    cx.run_until_parked();
+
+    in_window(&s, cx, |window, _| {
+        let long_icon = window.find(icon_id(&long)).bounds();
+        let short_icon = window.find(icon_id(&s.path("Welcome.md"))).bounds();
+        assert_eq!(long_icon.origin.x, short_icon.origin.x, "icons line up");
+        assert_eq!(long_icon.size, short_icon.size, "the icon keeps its size");
+    });
 }
