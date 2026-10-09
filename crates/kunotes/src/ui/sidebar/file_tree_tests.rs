@@ -35,8 +35,12 @@ struct Setup {
 }
 
 impl Setup {
+    /// `relative` uses `/`; each part is joined separately so the result uses the
+    /// OS separator (on Windows, "a/b" would otherwise stay mixed: `C:\vault\a/b`).
     fn path(&self, relative: &str) -> PathBuf {
-        self.dir.path().join(relative)
+        relative
+            .split('/')
+            .fold(self.dir.path().to_path_buf(), |path, part| path.join(part))
     }
 }
 
