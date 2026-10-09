@@ -66,13 +66,16 @@ kunotes-gpui/
 │   │   │   ├── search.rs      # flatten files, quick-switcher filter, tree visible rows
 │   │   │   ├── fs_ops.rs      # create / rename / move / trash, atomic_write, unique names
 │   │   │   ├── names.rs       # filename validation (cross-platform rules)
-│   │   │   ├── paths.rs       # relative path, breadcrumb parts
+│   │   │   ├── paths.rs       # relative path, breadcrumb, note title, remap after rename
 │   │   │   ├── format.rs      # formatter-bar transforms (bold, link, heading, ...)
 │   │   │   ├── cursor.rs      # byte offset -> (line, col), character count
+│   │   │   ├── line_ending.rs # keep \n or \r\n unchanged across load/save
 │   │   │   ├── settings.rs    # Settings + load/save JSON
 │   │   │   └── live.rs        # Live-mode logic (Phase 10; may become live/ folder)
 │   │   └── tests/             # integration tests that touch the real filesystem
-│   │       └── fs_ops.rs
+│   │       ├── fs_ops.rs
+│   │       ├── scan.rs
+│   │       └── settings.rs
 │   └── kunotes/               # BINARY: the GPUI desktop app
 │       ├── Cargo.toml
 │       └── src/
@@ -200,7 +203,7 @@ Methods (each wraps a `kunotes-core` function, then calls `refresh` and updates 
 | `refresh()` | Rescan on `cx.background_spawn`, apply the result on the main thread if `scan_generation` still matches, emit `TreeChanged`. Prune `expanded` entries that no longer exist. |
 | `create_file(parent)` | Pick a unique `Untitled.md`, seed it with `# Untitled\n`, select it, expand the parent. |
 | `create_folder(parent)` | Pick a unique `New Folder`. |
-| `rename(path, new_name)` | Validate the name (§8.2). Append `.md` to files typed without an extension. Remap paths (below). |
+| `rename(path, new_name)` | Validate the name (§8.2). Append `.md` unless the name already ends in `.md`. Remap paths (below). |
 | `move_into(path, folder)` | Reject moving into itself or a descendant, and reject collisions. Remap paths (below). |
 | `trash(path)` | `trash::delete`. Clear the selection if it pointed at the path or something under it. |
 

@@ -34,37 +34,37 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done
 
 ---
 
-## Phase 1: `kunotes-core` (pure logic with tests)
+## Phase 1: `kunotes-core` (pure logic with tests) ✅
 
 **Goal:** all non-UI behavior, covered by unit tests. No GPUI dependency.
 
-- [ ] `node.rs`: `VaultNode { path, name, is_dir, children: Option<Vec<VaultNode>> }` and `scan(root)`.
+- [x] `node.rs`: `VaultNode { path, name, is_dir, children: Vec<VaultNode> }` (files have no children), `VaultNode::scan(root)`, `is_markdown(path)`.
   - Directories and `*.md` (case-insensitive) only. Skip dot-prefixed names. Don't follow dir symlinks. Unreadable dirs → empty.
   - Sort folders first, then `natord::compare_ignore_case`.
-- [ ] `fs_ops.rs`:
-  - [ ] `unique_path(dir, base, ext)` → `Untitled.md`, `Untitled 2.md`, `Untitled 3.md`, …
-  - [ ] `create_file(dir, base)` seeds `# {stem}\n`. `create_folder(dir, base)`.
-  - [ ] `rename(path, new_name)`: validate, append `.md` to files typed without an extension, no-op if unchanged, handle case-only renames via a temp name, error on collision.
-  - [ ] `move_into(path, folder)`: reject self/descendant moves and collisions, no-op if already a child.
-  - [ ] `trash(path)` via the `trash` crate.
-  - [ ] `atomic_write(path, contents)`: temp file + fsync + rename.
-  - [ ] `remap_path(p, old, new)` helper for selection/expansion remapping.
-- [ ] `names.rs`: `validate_name(&str) -> Result<(), NameError>` (§8.2 rules).
-- [ ] `paths.rs`: `relative_path(root, path)`, `breadcrumb(root, file) -> Vec<String>` (vault name omitted, `.md` stripped, falls back to the file stem).
-- [ ] `format.rs`: `wrap`, `line_prefix`, `link`, `code_block`, `horizontal_rule` → `Edit { range, replacement, new_selection }` (§6.4). Byte offsets.
-- [ ] `cursor.rs`: `line_col(text, offset) -> (usize, usize)` (1-based), `char_count(text)` (graphemes).
-- [ ] `search.rs`: `flatten_files(&VaultNode)`, `filter(files, query)` (case-insensitive substring), `visible_rows(root, expanded)` for the tree.
-- [ ] `settings.rs`: `Settings` with serde, `load()` (default on missing or corrupt file), `save()` (atomic) at `dirs::config_dir()/kunotes/settings.json`.
-- [ ] `error.rs`: `CoreError` (`thiserror`).
+- [x] `fs_ops.rs`:
+  - [x] `unique_path(dir, base, ext)` → `Untitled.md`, `Untitled 2.md`, `Untitled 3.md`, …
+  - [x] `create_file(dir, base)` seeds `# {title}\n` (never overwrites). `create_folder(dir, base)`.
+  - [x] `rename(path, new_name)`: trim, validate, append `.md` to files unless the name already ends in `.md`, no-op if unchanged, case-only renames via a temp name (refused if a different file has that exact name on a case-sensitive disk), error on collision.
+  - [x] `move_into(path, folder)`: reject self/descendant moves and collisions, no-op if already a child.
+  - [x] `trash(path)` via the `trash` crate.
+  - [x] `atomic_write(path, contents)`: hidden temp file + fsync + rename, temp removed on failure.
+- [x] `names.rs`: `validate_name(&str) -> Result<(), NameError>` (§8.2 rules, plus a leading `.` is rejected because the file would be hidden).
+- [x] `paths.rs`: `relative_path` (always `/`), `note_title`, `breadcrumb`, `remap_path` (selection/expansion after rename or move), `ancestors_within` (folders to expand to reveal a file).
+- [x] `format.rs`: `bold`, `italic`, `inline_code`, `wrap`, `heading` (replaces an existing marker), `quote`, `bullet_list`, `numbered_list`, `link`, `code_block`, `horizontal_rule` → `Edit { range, replacement, new_selection }` (§6.4). Byte offsets; out-of-range or mid-character selections are clamped.
+- [x] `cursor.rs`: `line_col(text, offset)` (1-based, column in characters), `char_count(text)` (graphemes).
+- [x] `line_ending.rs`: `LineEnding::detect` / `apply`, `normalize`, so `\r\n` files are saved back unchanged.
+- [x] `search.rs`: `flatten_files`, `filter_files` (case-insensitive substring), `visible_rows(root, expanded)` → `VisibleRow`.
+- [x] `settings.rs`: `Settings` + `ViewMode` with serde, `default_path()`, `load_from()` (defaults on missing or corrupt file), `save_to()` (atomic).
+- [x] `error.rs`: `CoreError` (`thiserror`) + `Result<T>` alias.
 
-**Tests** (filesystem tests use `tempfile` dirs):
-- [ ] Scan: hidden files, `.git`, non-md files, nested folders, sort order (`a2` before `a10`, case-insensitive), symlink loop doesn't hang (unix only, `#[cfg(unix)]`).
-- [ ] Unique names, rename with and without extension, case-only rename, collision error.
-- [ ] Move into self, into a descendant, into the current parent (no-op), collision.
-- [ ] `validate_name`: every rule in §8.2.
-- [ ] Format transforms: empty selection, non-empty selection, start/middle/end of document, multi-byte text (emoji, CJK), multi-line selection for `line_prefix`.
-- [ ] `line_col` with `\n` and `\r\n`. `char_count` with emoji ZWJ sequences.
-- [ ] Settings round-trip and corrupt-file fallback.
+**Tests:** 65 passing (45 unit tests in `src/`, 20 integration tests in `tests/fs_ops.rs`, `tests/scan.rs`, `tests/settings.rs`). One real-trash test is `#[ignore]`d for CI; run it with `cargo test -- --ignored`.
+- [x] Scan: hidden files, `.git`, non-md files, nested folders, sort order (`a2` before `a10`, case-insensitive), symlink loop doesn't hang (unix only), the sample-vault fixture.
+- [x] Unique names, rename with and without extension, case-only rename, collision error, invalid names leave the file untouched.
+- [x] Move into self, into a descendant, into the current parent (no-op), collision.
+- [x] `validate_name`: every rule in §8.2.
+- [x] Format transforms: empty selection, non-empty selection, start/end of document, multi-byte text (emoji, CJK), multi-line selection, selection ending at a line start.
+- [x] `line_col` with `\n` and `\r\n`. `char_count` with emoji ZWJ sequences and flags.
+- [x] Settings round-trip and corrupt-file fallback.
 
 **Done when:** `cargo test -p kunotes-core` passes on all three OSes in CI.
 

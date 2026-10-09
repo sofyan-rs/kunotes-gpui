@@ -41,7 +41,7 @@ Rust ≥ 1.92 (required by gpui-kit). Windows needs the MSVC toolchain. Fedora n
 
 ## Layout
 
-- `crates/kunotes-core/`: **pure logic, no gpui.** Covers scan (`node.rs`), file ops and `atomic_write` (`fs_ops.rs`), filename validation (`names.rs`), relative path and breadcrumb (`paths.rs`), formatter transforms (`format.rs`), line/col and char count (`cursor.rs`), file flatten/filter and tree `visible_rows` (`search.rs`), `Settings` (`settings.rs`), and Live-mode logic (`live.rs`: blocks, marker ranges, cursor movement over hidden ranges). Anything that can be written without gpui goes here, with tests.
+- `crates/kunotes-core/`: **pure logic, no gpui.** Covers scan (`node.rs`), file ops and `atomic_write` (`fs_ops.rs`), filename validation (`names.rs`), relative path and breadcrumb (`paths.rs`), formatter transforms (`format.rs`), line/col and char count (`cursor.rs`), `\n`/`\r\n` preservation (`line_ending.rs`), file flatten/filter and tree `visible_rows` (`search.rs`), `Settings` (`settings.rs`), and Live-mode logic (`live.rs`: blocks, marker ranges, cursor movement over hidden ranges). Anything that can be written without gpui goes here, with tests.
 - `crates/kunotes/`: the GPUI app.
   - `vault_store.rs`: the `VaultStore` entity, the single source of truth, which emits `VaultEvent`.
   - `watcher.rs`: `notify` events go through a channel to `refresh`.
