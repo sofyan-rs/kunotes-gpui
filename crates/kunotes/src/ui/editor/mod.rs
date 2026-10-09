@@ -9,6 +9,7 @@ mod editor_tests;
 mod formatter_bar;
 mod preview;
 mod status_bar;
+mod view_mode_switch;
 
 use std::fs;
 use std::ops::Range;
@@ -16,7 +17,6 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use gpui_kit::assets::IconName;
-use gpui_kit::component::button::{Toggle, ToggleGroup};
 use gpui_kit::component::input::{Editor, EditorState, InputEvent};
 use gpui_kit::component::resizable::{h_resizable, resizable_panel};
 use gpui_kit::component::{ActiveTheme as _, Icon, Sizable as _, h_flex, v_flex};
@@ -323,7 +323,7 @@ impl EditorPane {
             .border_b_1()
             .border_color(cx.theme().border)
             .child(breadcrumb)
-            .child(view_mode_toggle(mode))
+            .child(view_mode_switch::render(mode, cx))
     }
 
     fn render_editor(&self) -> AnyElement {
@@ -374,39 +374,4 @@ impl Render for EditorPane {
             .child(div().flex_1().min_h_0().child(body))
             .child(status_bar::render(line, column, self.char_count, cx))
     }
-}
-
-/// The Source / Split / Preview switch. It sends the matching action, which the
-/// workspace handles (so the same code runs for the buttons, shortcuts, and menu).
-fn view_mode_toggle(mode: ViewMode) -> impl IntoElement {
-    const MODES: [(ViewMode, &str); 3] = [
-        (ViewMode::Source, "Source"),
-        (ViewMode::Split, "Split"),
-        (ViewMode::Preview, "Preview"),
-    ];
-    ToggleGroup::new("view-mode")
-        .segmented()
-        .small()
-        .children(
-            MODES
-                .iter()
-                .enumerate()
-                .map(|(index, (m, label))| Toggle::new(index).label(*label).checked(*m == mode)),
-        )
-        .on_click(move |states, window, cx| {
-            // The group reports every toggle's new state; find the one that turned on.
-            // Clicking the already-active mode turns it "off", which we ignore.
-            let clicked = MODES
-                .iter()
-                .zip(states)
-                .find(|((m, _), on)| **on && *m != mode)
-                .map(|((m, _), _)| *m);
-            let action: Box<dyn gpui_kit::Action> = match clicked {
-                Some(ViewMode::Split) => Box::new(crate::actions::ViewSplit),
-                Some(ViewMode::Preview) => Box::new(crate::actions::ViewPreview),
-                Some(_) => Box::new(crate::actions::ViewSource),
-                None => return,
-            };
-            window.dispatch_action(action, cx);
-        })
 }

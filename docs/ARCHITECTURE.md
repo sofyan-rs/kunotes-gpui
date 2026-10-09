@@ -104,6 +104,7 @@ kunotes-gpui/
 │               │   ├── formatter_bar.rs
 │               │   ├── preview.rs
 │               │   ├── status_bar.rs
+│               │   ├── view_mode_switch.rs
 │               │   └── live/          # custom Live editor (Phase 10)
 │               ├── quick_switcher.rs
 │               ├── quick_switcher_tests.rs
@@ -320,7 +321,7 @@ If Phase 0 shows that `Tree` can cover all of this cleanly, swapping it in is a 
 A new `EditorPane` entity is created whenever `selected_file` changes, so per-file state never leaks between files.
 
 - **Load:** read the file as UTF-8 (lossy fallback with a warning notification), then `set_value`. Keep the original line ending style (`\n` vs `\r\n`) and write it back unchanged.
-- **Header row:** breadcrumb on the left (path relative to the vault root, vault name omitted, `.md` stripped, last segment highlighted, chevron separators). Live/Source/Split/Preview `ToggleGroup::segmented()` on the right. ToggleGroup is multi-state, so the view keeps a single `ViewMode` and sets `checked(mode == X)` on each toggle.
+- **Header row:** breadcrumb on the left (path relative to the vault root, vault name omitted, `.md` stripped, last segment highlighted, chevron separators). A segmented control on the right (`ui/editor/view_mode_switch.rs`): muted track, icon + label per mode, the active mode raised; clicking sends the same action as the shortcut, with the shortcut in a tooltip.
 - **Formatter bar:** shown in Live, Source, and Split modes (§6.4).
 - **Body:** the four view modes:
 

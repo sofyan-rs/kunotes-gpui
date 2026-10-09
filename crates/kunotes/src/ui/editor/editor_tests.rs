@@ -196,3 +196,17 @@ fn character_count_follows_typing(cx: &mut TestAppContext) {
         "the count includes typing that arrived mid-update"
     );
 }
+
+#[gpui_kit::test]
+fn clicking_a_view_mode_segment_switches_mode(cx: &mut TestAppContext) {
+    let s = setup(cx);
+    open_note(&s, cx, "Welcome.md");
+    let mode = |cx: &mut TestAppContext| cx.read(|cx| SettingsStore::get(cx).view_mode);
+
+    in_window(&s, cx, |window, cx| window.click("Split", cx));
+    assert_eq!(mode(cx), ViewMode::Split);
+    in_window(&s, cx, |window, cx| window.click("Preview", cx));
+    assert_eq!(mode(cx), ViewMode::Preview);
+    in_window(&s, cx, |window, cx| window.click("Source", cx));
+    assert_eq!(mode(cx), ViewMode::Source);
+}

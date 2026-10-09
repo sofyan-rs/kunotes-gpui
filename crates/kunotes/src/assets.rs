@@ -12,6 +12,8 @@ gpui_kit::assets::icon_assets!(
     [
         Bold,
         Code,
+        Columns2,
+        Eye,
         FolderPlus,
         Heading1,
         Heading2,
