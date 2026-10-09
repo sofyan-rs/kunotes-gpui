@@ -164,6 +164,10 @@ impl Element for LiveElement {
             if origin.y + line.bottom() < visible.top() || top > visible.bottom() {
                 continue;
             }
+            if let Some(row) = &line.table_row {
+                row.paint(origin, line.line_height, &colors, window, cx);
+                continue;
+            }
             let text_origin = point(origin.x + line.text_left, origin.y + line.text_top);
             // Backgrounds (inline code) first, then the text on top.
             if let Err(error) = line.shaped.paint_background(

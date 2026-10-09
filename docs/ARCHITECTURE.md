@@ -73,6 +73,7 @@ kunotes-gpui/
 │   │   │   ├── settings.rs    # Settings + load/save JSON
 │   │   │   ├── live.rs        # markdown parts (spans) for Live and Source styling
 │   │   │   ├── live_view.rs   # what each Live line draws; drawn ⇄ file positions
+│   │   │   ├── live_table.rs  # tables: find them, split rows into cells
 │   │   │   └── live_buffer.rs # Live editor text, selection, undo, list continuation
 │   │   └── tests/             # integration tests that touch the real filesystem
 │   │       ├── fs_ops.rs
@@ -109,7 +110,7 @@ kunotes-gpui/
 │               │   ├── preview.rs     # rendered markdown, clickable checkboxes
 │               │   ├── status_bar.rs
 │               │   ├── view_mode_switch.rs
-│               │   └── live/          # custom Live editor: mod, keys, input, layout, style, element
+│               │   └── live/          # custom Live editor: mod, keys, input, layout, style, table, element
 │               ├── editor_area/       # tabs: EditorArea (mod.rs), tab_bar.rs, tests
 │               ├── quick_switcher.rs
 │               ├── quick_switcher_tests.rs
@@ -434,7 +435,8 @@ It shipped in two stages. Stage A (a styled gpui-kit editor with markers faded b
 - **Reveal on cursor:** every line the cursor or selection touches shows its raw markers (dimmed). Other lines hide them: `## Title` draws a large "Title", `**x**` a bold "x", `[label](url)` a link "label", `- item` a "• item", `- [x] done` a checkbox and "done".
 - **Looks like Preview:** heading sizes and weights (28/21/17.5/16px, bold/semibold), foreground heading color, inline code on the accent background, links in the primary color, 14px square checkboxes, muted quotes with a 3px bar, and empty lines as tall as Preview's paragraph gap. Live, Source and Preview text all start 24px from the editor's left edge.
 - **Code blocks:** monospace with a background; the fences stay visible.
-- **Images:** a line that is only `![alt](path)` shows the picture (scaled down to the width, one image pixel per point like Preview); inline images and failed loads show the alt text like a link. Tables show as styled source.
+- **Images:** a line that is only `![alt](path)` shows the picture (scaled down to the width, one image pixel per point like Preview); inline images and failed loads show the alt text like a link.
+- **Tables:** `kunotes_core::live_table` finds tables (header, `| --- |` delimiter, body rows) and splits rows into cells. With the cursor outside a table it's drawn as a grid like the Preview's (`ui/editor/live/table.rs`): bordered cells, a semibold header on a shaded row, the delimiter row hidden, columns sized to their widest cell and shrunk to fit. Clicking a cell puts the cursor in that cell's text, which reveals the whole table as markdown.
 
 **Preview checkboxes.** `preview.rs` installs a markdown block parser that turns lists containing tasks into a custom block, drawn with our own clickable checkboxes (the item text is rendered by a nested `TextView`). A click calls `EditorPane::toggle_task(offset)` through a `WeakEntity` captured by the renderer (actions don't reach the pane in Preview, since nothing there has focus).
 

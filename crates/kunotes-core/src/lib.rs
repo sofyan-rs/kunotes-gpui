@@ -11,6 +11,7 @@ pub mod fs_ops;
 pub mod line_ending;
 pub mod live;
 pub mod live_buffer;
+pub mod live_table;
 pub mod live_view;
 pub mod names;
 pub mod node;

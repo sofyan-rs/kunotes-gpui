@@ -17,9 +17,9 @@ use gpui_kit::{
     TextRun, Window, WrappedLine, point, px, size,
 };
 use kunotes_core::live_view::{LineKind, LineView, empty_view, image_link, line_view, lines};
-use kunotes_core::paths;
+use kunotes_core::{live_table, paths};
 
-use super::style;
+use super::{style, table};
 
 /// Body text size. Headings and code are sized relative to it.
 pub const FONT_SIZE: f32 = 16.;
@@ -39,6 +39,8 @@ pub struct LineInput {
     text_left: Pixels,
     /// For an image line whose picture has loaded: the picture and its size.
     image: Option<(Arc<RenderImage>, Size<Pixels>)>,
+    /// For a row of a table drawn as a grid (see `table.rs`).
+    table_row: Option<table::RowInput>,
 }
 
 /// Space between a picture and the next line.
@@ -63,6 +65,8 @@ pub struct LaidLine {
     pub text_height: Pixels,
     /// The picture of an image line and where it goes (below the text).
     pub image: Option<(Arc<RenderImage>, Bounds<Pixels>)>,
+    /// The cells of a table row drawn as a grid.
+    pub table_row: Option<table::LaidRow>,
 }
 
 impl LaidLine {
@@ -111,16 +115,42 @@ pub fn line_inputs(
     cx: &mut App,
 ) -> Vec<LineInput> {
     let colors = style::Colors::from_theme(cx);
-    lines(text)
-        .into_iter()
+    let all = lines(text);
+    let tables = live_table::tables(text, &all);
+    let touches =
+        |range: Range<usize>| range.start <= selection.end && selection.start <= range.end;
+    all.iter()
         .enumerate()
         .map(|(index, line)| {
-            let revealed = line.range.start <= selection.end && selection.start <= line.range.end;
+            let line = line.clone();
+            // A table is revealed as a whole when the cursor is anywhere in it.
+            let table = tables
+                .iter()
+                .enumerate()
+                .find(|(_, lines_of_table)| lines_of_table.contains(&index));
+            let revealed = match table {
+                Some((_, rows)) => {
+                    touches(all[rows.start].range.start..all[rows.end - 1].range.end)
+                }
+                None => touches(line.range.clone()),
+            };
             let line_text = &text[line.range.clone()];
+            let table_row = match table {
+                Some((table_index, rows)) if !revealed => Some(table::row_input(
+                    table_index,
+                    index - rows.start,
+                    line_text,
+                    &line.spans,
+                    &colors,
+                    window,
+                )),
+                _ => None,
+            };
             let image = image_link(line_text, &line.spans)
                 .and_then(|link| load_image(note_dir, &line_text[link], window, cx));
             let view = match &image {
-                // The picture replaces the text, unless the cursor is on the line.
+                // The cells (or the picture) replace the text, unless the cursor is there.
+                _ if table_row.is_some() => empty_view(LineKind::Paragraph, line_text.len()),
                 Some(_) if !revealed => empty_view(LineKind::Image, line_text.len()),
                 _ => line_view(line_text, &line.spans, revealed),
             };
@@ -154,6 +184,7 @@ pub fn line_inputs(
                 space_above,
                 text_left,
                 image,
+                table_row,
             }
         })
         .collect()
@@ -183,6 +214,10 @@ fn load_image(
 pub fn build(inputs: &[LineInput], width: Pixels, window: &mut Window) -> DocLayout {
     let mut lines = Vec::with_capacity(inputs.len());
     let mut y = px(0.);
+    let columns = table::column_widths(
+        inputs.iter().filter_map(|input| input.table_row.as_ref()),
+        width,
+    );
     for input in inputs {
         let wrap_width = (width - input.text_left).max(px(1.));
         let shaped = window
@@ -199,13 +234,17 @@ pub fn build(inputs: &[LineInput], width: Pixels, window: &mut Window) -> DocLay
             .unwrap_or_default();
         let rows = shaped.wrap_boundaries().len() + 1;
         let shows_text = !(input.image.is_some() && input.view.text.is_empty());
-        let text_height = if shows_text {
-            input.line_height * rows as f32
-        } else {
-            px(0.)
-        };
         let top = y;
         let text_top = top + input.space_above;
+        let table_row = input.table_row.as_ref().map(|row| {
+            let widths = columns.get(&row.table).map(Vec::as_slice).unwrap_or(&[]);
+            table::lay_out_row(row, widths, text_top, input.line_height, window)
+        });
+        let text_height = match &table_row {
+            Some((_, height)) => *height,
+            None if shows_text => input.line_height * rows as f32,
+            None => px(0.),
+        };
         // A picture goes below the text, shrunk to fit the width if needed.
         let image = input.image.as_ref().map(|(picture, natural)| {
             let max_width = (width - input.text_left).max(px(1.));
@@ -230,6 +269,7 @@ pub fn build(inputs: &[LineInput], width: Pixels, window: &mut Window) -> DocLay
             line_height: input.line_height,
             text_height,
             image,
+            table_row: table_row.map(|(row, _)| row),
         });
     }
     DocLayout {
@@ -269,6 +309,11 @@ impl DocLayout {
             .partition_point(|line| line.bottom() <= position.y)
             .min(self.lines.len() - 1);
         let line = &self.lines[index];
+        if let Some(row) = &line.table_row
+            && let Some(offset) = row.offset_at(position, line.line_height)
+        {
+            return line.source.start + offset;
+        }
         // Clicks in the space above a heading land on its first row.
         let local = point(
             position.x - line.text_left,

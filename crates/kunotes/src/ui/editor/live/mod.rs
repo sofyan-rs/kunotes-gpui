@@ -15,6 +15,7 @@ mod input;
 mod keys;
 mod layout;
 mod style;
+mod table;
 
 use gpui_kit::component::menu::ContextMenuExt as _;
 use gpui_kit::{

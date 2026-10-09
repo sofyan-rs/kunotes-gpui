@@ -222,6 +222,7 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done
 - [x] `input.rs`: `EntityInputHandler` (typing, IME marked text, UTF-16 ⇄ UTF-8). Mouse in `mod.rs`: click, drag, double/triple click, shift-click.
 - [x] `keys.rs`: gpui-kit's `Input` key context, so the usual per-OS shortcuts work: char/word/line movement, Up/Down, start/end, delete, clipboard, select all, undo/redo, Enter, Tab.
 - [x] Checkbox click toggles `[ ]` ⇄ `[x]` as one undoable edit, in Live and in Preview.
+- [x] Tables in Live drawn as a grid like Preview (raw markdown while the cursor is in the table). Core tests + screenshot.
 - [x] Toolbar: strikethrough, H3, task list, table, image. Images are copied into `.img` next to the note and shown in Live and Preview. Core + UI tests.
 - [x] Right-click menus: Live and Source share one (clipboard, formatting, select all); Preview has Copy and Select All; the sidebar's empty space has New Note / New Folder / Reveal for the vault root. UI tests.
 - [x] Formatter bar reuses `kunotes_core::format` on the Live buffer.
