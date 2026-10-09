@@ -1,9 +1,10 @@
-//! The right-click menu of a file tree row.
+//! The right-click menus of the file tree: one for a row, one for the empty
+//! space below the rows (which makes things at the vault root).
 
 use std::path::{Path, PathBuf};
 
 use gpui_kit::component::menu::{PopupMenu, PopupMenuItem};
-use gpui_kit::{ClipboardItem, Context, Entity};
+use gpui_kit::{App, ClipboardItem, Context, Entity, Window};
 use kunotes_core::paths::relative_path;
 
 use super::file_tree::FileTree;
@@ -27,14 +28,20 @@ pub fn build(
         let (t, p) = (tree.clone(), path.clone());
         menu = menu.item(
             PopupMenuItem::new("New Note").on_click(move |_, window, cx| {
-                t.update(cx, |tree, cx| tree.start_new(p.clone(), false, window, cx));
+                let p = p.clone();
+                after_menu_closes(&t, window, cx, move |tree, window, cx| {
+                    tree.start_new(p, false, window, cx)
+                });
             }),
         );
         let (t, p) = (tree.clone(), path.clone());
         menu = menu
             .item(
                 PopupMenuItem::new("New Folder").on_click(move |_, window, cx| {
-                    t.update(cx, |tree, cx| tree.start_new(p.clone(), true, window, cx));
+                    let p = p.clone();
+                    after_menu_closes(&t, window, cx, move |tree, window, cx| {
+                        tree.start_new(p, true, window, cx)
+                    });
                 }),
             )
             .separator();
@@ -42,7 +49,10 @@ pub fn build(
 
     let (t, p) = (tree.clone(), path.clone());
     menu = menu.item(PopupMenuItem::new("Rename").on_click(move |_, window, cx| {
-        t.update(cx, |tree, cx| tree.start_rename(p.clone(), window, cx));
+        let p = p.clone();
+        after_menu_closes(&t, window, cx, move |tree, window, cx| {
+            tree.start_rename(p, window, cx)
+        });
     }));
     let (v, p) = (vault.clone(), path.clone());
     menu = menu
@@ -72,4 +82,54 @@ pub fn build(
             cx.write_to_clipboard(ClipboardItem::new_string(relative.clone()));
         }),
     )
+}
+
+/// Builds the menu for empty space in the tree: new items go in the vault root.
+pub fn build_for_root(
+    menu: PopupMenu,
+    tree: Entity<FileTree>,
+    root: PathBuf,
+    _cx: &mut Context<PopupMenu>,
+) -> PopupMenu {
+    let (t, r) = (tree.clone(), root.clone());
+    let menu = menu.item(
+        PopupMenuItem::new("New Note").on_click(move |_, window, cx| {
+            let r = r.clone();
+            after_menu_closes(&t, window, cx, move |tree, window, cx| {
+                tree.start_new(r, false, window, cx)
+            });
+        }),
+    );
+    let (t, r) = (tree, root.clone());
+    menu.item(
+        PopupMenuItem::new("New Folder").on_click(move |_, window, cx| {
+            let r = r.clone();
+            after_menu_closes(&t, window, cx, move |tree, window, cx| {
+                tree.start_new(r, true, window, cx)
+            });
+        }),
+    )
+    .separator()
+    .item(
+        PopupMenuItem::new(platform::reveal_label()).on_click(move |_, _, _| {
+            if let Err(error) = opener::reveal(&root) {
+                log::warn!("couldn't reveal {}: {error}", root.display());
+            }
+        }),
+    )
+}
+
+/// Runs `f` on the tree once the menu has closed. The menu gives focus back
+/// to where it was when it closes, which would take it away from the name
+/// field `f` opens.
+fn after_menu_closes(
+    tree: &Entity<FileTree>,
+    window: &mut Window,
+    cx: &mut App,
+    f: impl FnOnce(&mut FileTree, &mut Window, &mut Context<FileTree>) + 'static,
+) {
+    let tree = tree.clone();
+    window.defer(cx, move |window, cx| {
+        tree.update(cx, |tree, cx| f(tree, window, cx))
+    });
 }

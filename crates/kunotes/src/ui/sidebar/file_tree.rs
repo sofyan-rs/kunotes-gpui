@@ -18,7 +18,7 @@ use gpui_kit::component::menu::ContextMenuExt as _;
 use gpui_kit::component::{ActiveTheme as _, Icon, Sizable as _, h_flex};
 use gpui_kit::{
     AnyElement, AppContext as _, ClickEvent, Context, ElementId, Entity, FocusHandle,
-    InteractiveElement as _, IntoElement, ParentElement as _, Render,
+    InteractiveElement as _, IntoElement, MouseButton, ParentElement as _, Render,
     StatefulInteractiveElement as _, Styled as _, TestSupportExt as _, UniformListScrollHandle,
     Window, div, px, uniform_list,
 };
@@ -348,6 +348,8 @@ impl FileTree {
         div()
             .id(row_id(&row.path))
             .test_support()
+            // The row's own menu has opened; keep the empty-space menu closed.
+            .on_mouse_down(MouseButton::Right, |_, _, cx| cx.stop_propagation())
             .child(item)
             .into_any_element()
     }
@@ -364,6 +366,8 @@ impl Render for FileTree {
         self.place_new_item(root.as_deref());
         let row_count = self.rows.len() + usize::from(self.new_item_slot.is_some());
         let highlight_root = root.clone();
+        let menu_root = root.clone();
+        let menu_tree = cx.entity();
         let drop_color = cx.theme().drop_target;
 
         div()
@@ -390,6 +394,26 @@ impl Render for FileTree {
                     this.on_drop_into(entry, root, cx);
                 }
             }))
+            .relative()
+            // Right-click on empty space: new note/folder in the vault root. The menu
+            // sits on a layer behind the rows; rows stop the click from reaching it.
+            .child(
+                div().absolute().inset_0().child(
+                    div()
+                        .id("file-tree-background")
+                        .test_support()
+                        .size_full()
+                        .context_menu(move |menu, _, cx| match &menu_root {
+                            Some(root) => context_menu::build_for_root(
+                                menu,
+                                menu_tree.clone(),
+                                root.clone(),
+                                cx,
+                            ),
+                            None => menu,
+                        }),
+                ),
+            )
             .child(
                 // `uniform_list` only draws the rows on screen, so big vaults stay fast.
                 uniform_list("file-tree", row_count, cx.processor(Self::render_rows))

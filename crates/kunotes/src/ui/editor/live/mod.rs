@@ -6,12 +6,10 @@
 //!
 //! - this file: the editor's state and the mouse
 //! - `keys.rs`: keyboard actions (arrows, delete, undo, clipboard)
-//! - `context_menu.rs`: the right-click menu
 //! - `input.rs`: the OS text input (typing, IME)
 //! - `layout.rs`: places each line; `style.rs`: its fonts and colors
 //! - `element.rs`: draws everything
 
-mod context_menu;
 mod element;
 mod input;
 mod keys;
@@ -27,6 +25,7 @@ use gpui_kit::{
 };
 use kunotes_core::live_buffer::LiveBuffer;
 
+use super::edit_menu;
 use element::LiveElement;
 use layout::DocLayout;
 
@@ -304,10 +303,18 @@ impl Render for LiveEditor {
                     .pb(px(120.))
                     .child(LiveElement::new(cx.entity())),
             )
-            // Right-click menu, see `context_menu.rs`.
+            // Right-click menu, shared with Source mode (`editor/edit_menu.rs`).
             .context_menu({
                 let editor = cx.entity();
-                move |menu, _, cx| context_menu::build(menu, &editor, cx)
+                move |menu, _, cx| {
+                    let editor = editor.read(cx);
+                    edit_menu::build(
+                        menu,
+                        editor.focus_handle.clone(),
+                        !editor.buffer.selection().is_empty(),
+                        editor.read_only,
+                    )
+                }
             })
     }
 }

@@ -295,3 +295,29 @@ fn right_click_in_live_opens_the_menu_and_moves_the_cursor(cx: &mut TestAppConte
     let selected = pane(&s, cx).read_with(cx, |pane, cx| pane.selected_text(cx));
     assert_eq!(selected, "", "the cursor moved to where the click was");
 }
+
+#[gpui_kit::test]
+fn source_and_preview_have_a_right_click_menu(cx: &mut TestAppContext) {
+    let s = setup(cx);
+    open_note(&s, cx, "Welcome.md");
+    let menu_open = |s: &Setup, cx: &mut TestAppContext| {
+        let mut open = false;
+        in_window(s, cx, |window, _| {
+            open = window.try_find("popup-menu").is_some();
+        });
+        open
+    };
+
+    in_window(&s, cx, |window, cx| window.press("secondary-2", cx)); // Source
+    in_window(&s, cx, |window, cx| window.right_click("source-editor", cx));
+    cx.run_until_parked();
+    assert!(menu_open(&s, cx), "Source shows a menu");
+    in_window(&s, cx, |window, cx| window.press("escape", cx));
+    cx.run_until_parked();
+
+    assert!(!menu_open(&s, cx), "Escape closes the menu");
+    in_window(&s, cx, |window, cx| window.click("Preview", cx));
+    in_window(&s, cx, |window, cx| window.right_click("preview", cx));
+    cx.run_until_parked();
+    assert!(menu_open(&s, cx), "Preview shows a menu");
+}

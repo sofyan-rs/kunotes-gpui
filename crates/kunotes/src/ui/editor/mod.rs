@@ -8,6 +8,7 @@
 //! A new pane is created for every note that gets opened, so nothing from the
 //! previous note (cursor, unsaved state) can leak into the next one.
 
+mod edit_menu;
 #[cfg(test)]
 mod editor_tests;
 mod formatter_bar;
@@ -24,12 +25,14 @@ use std::time::Duration;
 
 use gpui_kit::assets::IconName;
 use gpui_kit::component::input::{Editor, EditorState, InputEvent};
+use gpui_kit::component::menu::ContextMenuExt as _;
 use gpui_kit::component::resizable::{h_resizable, resizable_panel};
+use gpui_kit::component::text::TextViewState;
 use gpui_kit::component::{ActiveTheme as _, Icon, Sizable as _, h_flex, v_flex};
 use gpui_kit::{
     AnyElement, App, AppContext as _, Context, Entity, EventEmitter, Focusable as _,
     InteractiveElement as _, IntoElement, ParentElement as _, Render, SharedString, Styled as _,
-    Subscription, Task, Window, div, prelude::FluentBuilder as _, px,
+    Subscription, Task, TestSupportExt as _, Window, div, prelude::FluentBuilder as _, px,
 };
 use kunotes_core::format::Edit;
 use kunotes_core::fs_ops::atomic_write;
@@ -72,8 +75,10 @@ pub struct EditorPane {
     /// True when the editor has changes that aren't on disk yet.
     dirty: bool,
     save_task: Option<Task<()>>,
-    /// The text the preview shows (updated a little behind the editor while typing).
-    preview_text: SharedString,
+    /// The rendered preview, updated a little behind the editor while typing.
+    /// Kept here (not inside the view) so its right-click menu can read and
+    /// change the selection.
+    preview: Entity<TextViewState>,
     /// Updates the preview and character count; `None` when idle.
     refresh_task: Option<Task<()>>,
     /// The text changed while `refresh_task` was running, so run it once more.
@@ -139,6 +144,8 @@ impl EditorPane {
                 .default_value(text.clone());
             // Our own markdown styling (see `markdown_style.rs`) instead of the built-in one.
             state.set_highlighter_factory(highlighter_factory(), cx);
+            // Our own right-click menu replaces the built-in one (see `edit_menu.rs`).
+            state.set_context_menu_enabled(false);
             state
         });
 
@@ -168,7 +175,7 @@ impl EditorPane {
             dirty: false,
             live_active,
             save_task: None,
-            preview_text: text.clone().into(),
+            preview: cx.new(|cx| TextViewState::markdown(&text, cx)),
             refresh_task: None,
             refresh_again: false,
             char_count: cursor::char_count(&text),
@@ -348,7 +355,7 @@ impl EditorPane {
             cx.background_executor().timer(PREVIEW_DELAY).await;
             let Ok(text) = this.update(cx, |pane, cx| {
                 let text = pane.text(cx);
-                pane.preview_text = text.clone();
+                pane.set_preview_text(text.clone(), cx);
                 cx.notify();
                 text
             }) else {
@@ -367,6 +374,12 @@ impl EditorPane {
                 cx.notify();
             });
         }));
+    }
+
+    /// Shows `text` in the preview.
+    fn set_preview_text(&mut self, text: SharedString, cx: &mut Context<Self>) {
+        self.preview
+            .update(cx, |preview, cx| preview.set_text(&text, cx));
     }
 
     // ----- Formatting -----
@@ -424,7 +437,8 @@ impl EditorPane {
             });
         }
         // Show the change right away instead of after the preview delay.
-        self.preview_text = self.text(cx);
+        let text = self.text(cx);
+        self.set_preview_text(text, cx);
         cx.notify();
     }
 
@@ -473,7 +487,8 @@ impl EditorPane {
 
     /// The Source/Split editor: monospace, like a code editor.
     fn render_source_editor(&self) -> AnyElement {
-        Editor::new(&self.editor)
+        let read_only = !self.can_save;
+        let editor = Editor::new(&self.editor)
             .bordered(false)
             .readonly(!self.can_save)
             .size_full()
@@ -482,7 +497,24 @@ impl EditorPane {
             .pl_3()
             .pr_6()
             .py_4()
-            .text_size(px(15.))
+            .text_size(px(15.));
+        let menu_editor = self.editor.clone();
+        div()
+            .id("source-editor")
+            .test_support() // lets UI tests find and click it
+            .size_full()
+            .child(editor)
+            // The same right-click menu as Live mode, instead of gpui-kit's
+            // native one (which looks different and offers "Go to Definition").
+            .context_menu(move |menu, _, cx| {
+                let editor = menu_editor.read(cx);
+                edit_menu::build(
+                    menu,
+                    editor.focus_handle(cx),
+                    !editor.selected_range().is_empty(),
+                    read_only,
+                )
+            })
             .into_any_element()
     }
 }
@@ -494,14 +526,11 @@ impl Render for EditorPane {
 
         let body: AnyElement = match mode {
             ViewMode::Preview => {
-                preview::render(self.preview_text.clone(), cx.weak_entity()).into_any_element()
+                preview::render(&self.preview, cx.weak_entity()).into_any_element()
             }
             ViewMode::Split => h_resizable("editor-split")
                 .child(resizable_panel().child(self.render_source_editor()))
-                .child(
-                    resizable_panel()
-                        .child(preview::render(self.preview_text.clone(), cx.weak_entity())),
-                )
+                .child(resizable_panel().child(preview::render(&self.preview, cx.weak_entity())))
                 .into_any_element(),
             ViewMode::Live => self.live.clone().into_any_element(),
             ViewMode::Source => self.render_source_editor(),

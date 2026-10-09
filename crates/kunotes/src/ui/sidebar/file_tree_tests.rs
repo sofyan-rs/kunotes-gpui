@@ -5,7 +5,9 @@ use std::fs;
 
 use gpui_kit::component::WindowExt as _;
 use gpui_kit::test::TestWindowExt as _;
-use gpui_kit::{TestAppContext, px};
+use gpui_kit::{
+    InputEvent as _, MouseButton, MouseDownEvent, MouseUpEvent, TestAppContext, point, px,
+};
 
 use super::file_tree::{icon_id, row_id};
 use std::path::Path;
@@ -303,4 +305,87 @@ fn a_long_name_does_not_shift_its_row(cx: &mut TestAppContext) {
         assert_eq!(long_icon.origin.x, short_icon.origin.x, "icons line up");
         assert_eq!(long_icon.size, short_icon.size, "the icon keeps its size");
     });
+}
+
+/// Right-clicks the empty space at the bottom of the tree.
+fn right_click_empty_space(s: &Setup, cx: &mut TestAppContext) {
+    in_window(s, cx, |window, cx| {
+        let bounds = window.find("file-tree-background").bounds();
+        let position = point(bounds.left() + px(20.), bounds.bottom() - px(20.));
+        window.dispatch_event(
+            MouseDownEvent {
+                button: MouseButton::Right,
+                position,
+                modifiers: Default::default(),
+                click_count: 1,
+                first_mouse: false,
+            }
+            .to_platform_input(),
+            cx,
+        );
+        window.dispatch_event(
+            MouseUpEvent {
+                button: MouseButton::Right,
+                position,
+                modifiers: Default::default(),
+                click_count: 1,
+            }
+            .to_platform_input(),
+            cx,
+        );
+    });
+    cx.run_until_parked();
+}
+
+/// True if the empty-space (vault root) menu is open.
+fn root_menu_open(s: &Setup, cx: &mut TestAppContext) -> bool {
+    let mut open = false;
+    in_window(s, cx, |window, _| {
+        open = window
+            .within("file-tree-background")
+            .try_find("popup-menu")
+            .is_some();
+    });
+    open
+}
+
+#[gpui_kit::test]
+fn right_click_on_empty_space_makes_a_note_in_the_root(cx: &mut TestAppContext) {
+    let s = setup(cx);
+    // Something inside a folder is selected; the new note still goes in the root.
+    in_window(&s, cx, |window, cx| {
+        window.click(row_id(&s.path("Projects")), cx)
+    });
+
+    right_click_empty_space(&s, cx);
+    assert!(root_menu_open(&s, cx));
+    // "New Note" is the first item: pick it with the keyboard.
+    in_window(&s, cx, |window, cx| window.press("down", cx));
+    in_window(&s, cx, |window, cx| window.press("enter", cx));
+    cx.run_until_parked();
+    assert!(name_field_open(&s, cx));
+    in_window(&s, cx, |window, cx| window.input("Root Note", cx));
+    in_window(&s, cx, |window, cx| window.press("enter", cx));
+
+    assert!(s.path("Root Note.md").exists());
+}
+
+#[gpui_kit::test]
+fn right_click_on_a_row_opens_only_the_row_menu(cx: &mut TestAppContext) {
+    let s = setup(cx);
+    let welcome = s.path("Welcome.md");
+    in_window(&s, cx, |window, cx| {
+        window.right_click(row_id(&welcome), cx)
+    });
+    cx.run_until_parked();
+
+    let mut row_menu = false;
+    in_window(&s, cx, |window, _| {
+        row_menu = window
+            .within(row_id(&welcome))
+            .try_find("popup-menu")
+            .is_some();
+    });
+    assert!(row_menu, "the row's menu opens");
+    assert!(!root_menu_open(&s, cx), "the empty-space menu stays closed");
 }

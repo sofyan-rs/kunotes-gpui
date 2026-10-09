@@ -103,12 +103,13 @@ kunotes-gpui/
 │               ├── editor/
 │               │   ├── mod.rs         # EditorPane: load, autosave, view modes, formatting
 │               │   ├── editor_tests.rs # headless UI tests (autosave, rename, format)
+│               │   ├── edit_menu.rs   # right-click menu of Live and Source
 │               │   ├── formatter_bar.rs
 │               │   ├── markdown_style.rs # Source/Split colors (InputHighlighter)
 │               │   ├── preview.rs     # rendered markdown, clickable checkboxes
 │               │   ├── status_bar.rs
 │               │   ├── view_mode_switch.rs
-│               │   └── live/          # custom Live editor: mod, keys, context_menu, input, layout, style, element
+│               │   └── live/          # custom Live editor: mod, keys, input, layout, style, element
 │               ├── editor_area/       # tabs: EditorArea (mod.rs), tab_bar.rs, tests
 │               ├── quick_switcher.rs
 │               ├── quick_switcher_tests.rs
@@ -312,7 +313,7 @@ fn visible_rows(root: &VaultNode, expanded: &HashSet<PathBuf>) -> Vec<VisibleRow
 | Double-click a folder | Toggle expansion (check `ClickEvent` click count == 2). |
 | Click the chevron | Toggle expansion. |
 | Keyboard | `up`/`down` move the selection; `right` expands; `left` collapses or jumps to the parent; `enter` toggles a folder or opens a file. |
-| Context menu (`context_menu.rs`) | Folders: New Note, New Folder, separator. All rows: Rename, Delete, separator, Reveal in Finder / Show in Explorer / Open Containing Folder, Copy Path, Copy Relative Path. |
+| Context menu (`context_menu.rs`) | Folders: New Note, New Folder, separator. All rows: Rename, Delete, separator, Reveal in Finder / Show in Explorer / Open Containing Folder, Copy Path, Copy Relative Path. **Empty space** below the rows: New Note, New Folder (in the vault root), Reveal. That menu sits on a layer behind the rows, and rows stop the right-click from reaching it (gpui-kit menus don't stop propagation, so nested menus would both open). Items that open the inline name field run after the menu closes (`window.defer`), because the closing menu hands focus back to where it was. |
 | Inline editing (`inline_edit.rs`) | Like VS Code/Zed. **Rename** (F2, menu) turns the row's name into a field with the name minus `.md` selected. **New note/folder** (header buttons, `secondary-n`, `secondary-shift-n`, menu) shows an empty field at the top of the target folder, expanding it. Enter confirms; Escape cancels; focus leaving the field confirms (or cancels when empty). An invalid or taken name keeps the field open after Enter and shows a notification. Focus loss uses `cx.on_focus_out` on the field. |
 | Drag and drop | Row `.on_drag(DraggedEntry { path }, preview)`. Folder rows and empty space below the list get `.drag_over::<DraggedEntry>(highlight)` and `.on_drop::<DraggedEntry>(→ VaultStore::move_into)`. Dropping on a file row is ignored. Dropping on empty space moves the item to the vault root. |
 | Icons | Folder (blue) and file-text (muted). The icon turns white on the selected row. |
@@ -365,6 +366,7 @@ With no selection, transforms apply at the cursor position. They fall back to th
 ### 6.5 Preview (`ui/editor/preview.rs`)
 
 - `TextView::markdown("preview", content).scrollable(true)` with selectable text (on by default) and the same 24px side padding as Live and Source.
+- **Right-click menu:** Copy and Select All. `EditorPane` owns the `TextViewState` (rendered with `TextView::new(&state)`) so the menu can read the selection and call `select_all`.
 - **Clickable task checkboxes:** lists with tasks are parsed into a custom block and drawn by us; a click flips `[ ]` ⇄ `[x]` in the note (§6.9).
 - It must render: headings H1–H6, paragraphs, bold, italic, inline code (accent color), links (accent color with underline, opened in the browser via `cx.open_url`), fenced code blocks (muted rounded background, monospace), ordered and unordered lists with nesting, task lists with checked and unchecked boxes, blockquotes (accent left bar, muted text), and thematic breaks.
 - **Throttle:** in Split mode, update the preview at most every ~150ms while typing, so large notes don't re-parse on every keystroke.
@@ -416,7 +418,7 @@ It shipped in two stages. Stage A (a styled gpui-kit editor with markers faded b
 
 **App (`ui/editor/live/`):**
 - `mod.rs`: the `LiveEditor` entity (buffer, focus, IME marked range, last layout, scroll) and the mouse: click, shift-click, drag-select, double-click word, triple-click line, checkbox click.
-- `context_menu.rs`: right-click menu (Cut, Copy, Paste, Bold, Italic, Link, Select All). Items are actions with `action_context` set to the editor, so they show their shortcuts. Right-click outside the selection moves the cursor first.
+- Right-click menu: `ui/editor/edit_menu.rs` (Cut, Copy, Paste, Bold, Italic, Link, Select All), shared with Source mode. Items are actions with `action_context` set to the editor, so they show their shortcuts. In Live, right-click outside the selection moves the cursor first. Source turns off gpui-kit's built-in menu (`set_context_menu_enabled(false)`), which is a native OS menu with code-editor items, so all menus in the app look the same.
 - `keys.rs`: keyboard actions. The root uses gpui-kit's **`Input` key context**, so its bindings (arrows, Home/End, word jumps, delete-word, undo/redo, clipboard, select all, Enter, Tab) work with each OS's usual keys; we only handle the actions.
 - `input.rs`: `EntityInputHandler` (typing, IME composition, emoji picker), converting the OS's UTF-16 ranges to UTF-8 byte offsets.
 - `layout.rs`: one shaped `WrappedLine` per line (`text_system().shape_text` with a wrap width). The element uses a *measured* layout (`request_measured_layout`), because the height depends on the width. Also hit-testing (`offset_for_point`), caret position, Up/Down at a kept x, selection rectangles.

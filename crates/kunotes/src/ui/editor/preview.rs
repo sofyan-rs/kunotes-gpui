@@ -3,15 +3,18 @@
 //! Task lists are drawn by us instead of gpui-kit, so their checkboxes can be
 //! clicked: a click tells the editor pane the task's position in the note,
 //! and the pane flips `[ ]` ↔ `[x]` in the text.
+//!
+//! Right-click shows Copy and Select All.
 
 use gpui_kit::assets::IconName;
 use gpui_kit::base::markdown_ast::Node;
-use gpui_kit::component::text::{MarkdownNode, MarkdownParseContext, TextView};
+use gpui_kit::component::menu::{ContextMenuExt as _, PopupMenu, PopupMenuItem};
+use gpui_kit::component::text::{MarkdownNode, MarkdownParseContext, TextView, TextViewState};
 use gpui_kit::component::{ActiveTheme as _, Icon, Sizable as _, h_flex, v_flex};
 use gpui_kit::{
-    AnyElement, App, CursorStyle, InteractiveElement as _, IntoElement, MouseButton,
-    ParentElement as _, SharedString, Styled as _, TestSupportExt as _, WeakEntity, Window, div,
-    prelude::*, px,
+    AnyElement, App, ClipboardItem, Context, CursorStyle, Entity, InteractiveElement as _,
+    IntoElement, MouseButton, ParentElement as _, SharedString, Styled as _, TestSupportExt as _,
+    WeakEntity, Window, div, prelude::*, px,
 };
 
 use super::EditorPane;
@@ -19,22 +22,49 @@ use super::EditorPane;
 /// Name of our custom block for task lists.
 const TASK_LIST: &str = "kunotes-task-list";
 
-pub fn render(text: SharedString, pane: WeakEntity<EditorPane>) -> impl IntoElement {
-    div().size_full().child(
-        TextView::markdown("preview", text)
-            .selectable(true)
-            .scrollable(true)
-            .on_link_click(|url, _, _, cx| cx.open_url(url))
-            .markdown_block_parser(parse_task_list)
-            // The renderer runs on every frame; gpui-kit only re-parses when the
-            // text changes, so passing a fresh closure each time is fine.
-            .markdown_block_renderer(TASK_LIST, move |node, window, cx| {
-                render_task_list(node, &pane, window, cx)
-            })
-            .size_full()
-            .px_6()
-            .py_4(),
-    )
+pub fn render(state: &Entity<TextViewState>, pane: WeakEntity<EditorPane>) -> impl IntoElement {
+    let menu_state = state.clone();
+    div()
+        .id("preview")
+        .test_support() // lets UI tests find it
+        .size_full()
+        .child(
+            TextView::new(state)
+                .selectable(true)
+                .scrollable(true)
+                .on_link_click(|url, _, _, cx| cx.open_url(url))
+                .markdown_block_parser(parse_task_list)
+                // The renderer runs on every frame; gpui-kit only re-parses when the
+                // text changes, so passing a fresh closure each time is fine.
+                .markdown_block_renderer(TASK_LIST, move |node, window, cx| {
+                    render_task_list(node, &pane, window, cx)
+                })
+                .size_full()
+                .px_6()
+                .py_4(),
+        )
+        .context_menu(move |menu, _, cx| context_menu(menu, &menu_state, cx))
+}
+
+/// The right-click menu: Copy (the selected text) and Select All.
+fn context_menu(
+    menu: PopupMenu,
+    state: &Entity<TextViewState>,
+    cx: &mut Context<PopupMenu>,
+) -> PopupMenu {
+    let selected = state.read(cx).selected_text();
+    let copy = PopupMenuItem::new("Copy")
+        .disabled(selected.is_empty())
+        .on_click(move |_, _, cx| {
+            cx.write_to_clipboard(ClipboardItem::new_string(selected.clone()));
+        });
+    let state = state.clone();
+    let select_all = PopupMenuItem::new("Select All").on_click(move |_, window, cx| {
+        let focus = state.read(cx).focus_handle().clone();
+        window.focus(&focus, cx); // so Cmd/Ctrl+C copies it afterwards
+        state.update(cx, |state, cx| state.select_all(cx));
+    });
+    menu.item(copy).item(select_all)
 }
 
 /// A list that contains at least one task (`- [ ]`).
