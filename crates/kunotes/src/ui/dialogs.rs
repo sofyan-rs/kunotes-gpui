@@ -26,7 +26,9 @@ pub fn rename(vault: Entity<VaultStore>, path: PathBuf, window: &mut Window, cx:
             .confirm()
             .title("Rename")
             .ok_text("Rename")
-            .child(v_flex().pt_2().child(Input::new(&field)))
+            // The dialog clips its body, and the focus ring is drawn just outside the
+            // input; the bottom padding keeps the ring from being cut off.
+            .child(v_flex().pt_2().pb_1().child(Input::new(&field)))
             .on_ok(move |_, window, cx| {
                 let new_name = field.read(cx).value().to_string();
                 match vault.update(cx, |vault, cx| vault.rename(&path, &new_name, cx)) {

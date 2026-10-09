@@ -50,11 +50,16 @@ pub fn open(vault: Entity<VaultStore>, window: &mut Window, cx: &mut App) {
 
     let state = cx.new(|cx| CommandState::new(window, cx));
     let palette_state = state.clone();
-    window.open_dialog(cx, move |dialog, _, _| {
+    window.open_dialog(cx, move |dialog, _, cx| {
         let (notes, vault) = (notes.clone(), vault.clone());
+        // With the dialog's padding removed, the palette reaches the dialog's edge,
+        // so it needs the same rounded corners or its square corners poke out.
+        let radius = cx.theme().radius_lg;
         dialog.close_button(false).p_0().w(px(480.)).child(
             Command::new(&palette_state)
                 .bordered(false)
+                .rounded(radius)
+                .overflow_hidden()
                 .placeholder("Search notes…")
                 .max_h(px(360.))
                 // The items keep their order; Command filters them by label and keywords.
@@ -104,10 +109,20 @@ fn note_item(note: Note) -> CommandItem {
             h_flex()
                 .w_full()
                 .justify_between()
-                .gap_2()
-                .child(title.clone())
+                .gap_3()
+                // A long title shrinks and ends with "…"; the folder label keeps its size.
                 .child(
                     div()
+                        .flex_1()
+                        .min_w_0()
+                        .overflow_hidden()
+                        .whitespace_nowrap()
+                        .text_ellipsis()
+                        .child(title.clone()),
+                )
+                .child(
+                    div()
+                        .flex_none()
                         .text_xs()
                         .text_color(cx.theme().muted_foreground)
                         .child(folder.clone()),
