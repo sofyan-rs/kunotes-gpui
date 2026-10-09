@@ -87,7 +87,6 @@ kunotes-gpui/
 │           ├── settings_store.rs # Settings as a GPUI global, saved on change
 │           ├── vault_store.rs # VaultStore entity: shared app state + events
 │           ├── watcher.rs     # file watcher -> VaultStore::refresh
-│           ├── autosave.rs    # SaveDebouncer
 │           └── ui/            # all views, grouped by feature
 │               ├── mod.rs
 │               ├── workspace.rs       # root view: title bar + sidebar + editor
@@ -97,7 +96,8 @@ kunotes-gpui/
 │               │   ├── file_tree.rs   # FileTree (uniform_list rows, DnD, context menu)
 │               │   └── file_tree_tests.rs # headless UI tests (click, keys, drag)
 │               ├── editor/
-│               │   ├── mod.rs         # EditorPane: loads a file, switches view modes
+│               │   ├── mod.rs         # EditorPane: load, autosave, view modes, formatting
+│               │   ├── editor_tests.rs # headless UI tests (autosave, rename, format)
 │               │   ├── formatter_bar.rs
 │               │   ├── preview.rs
 │               │   ├── status_bar.rs
@@ -157,7 +157,7 @@ This split is the main "best practice" in the layout. Keeping business logic out
               │  Sidebar          │     │  EditorPane            │
               │  └ FileTree       │     │  (re-created per file) │
               └─────────┬─────────┘     └───────┬────────────────┘
-                        │ update()              │ read file / SaveDebouncer
+                        │ update()              │ load_note / autosave
                         ▼                       ▼
               ┌──────────────────────────────────────────────┐
               │  VaultStore (Entity)                          │
@@ -433,21 +433,25 @@ Fallback: if stage B can't hit the editing requirements on every OS, Live keeps 
 
 ## 7. Data integrity
 
-### 7.1 Save pipeline (`autosave.rs`)
+### 7.1 Save pipeline (`ui/editor/mod.rs`)
 
 ```
-InputEvent::Change ─► SaveDebouncer::schedule(content, path)
-                          │  replaces the pending task (drop = cancel)
+InputEvent::Change ─► dirty = true; schedule_save()
+                          │  replacing `save_task` drops (cancels) the previous timer
                           ▼
-                 cx.spawn: timer(500ms) ─► flush()
-flush(): if pending.take() → background atomic_write(path, content)
+                 cx.spawn: timer(500ms) ─► save_now()
+save_now(): if dirty && can_save → atomic_write(path, line_ending.apply(text))  (UI thread)
 ```
 
-When to flush immediately:
-- the selected file changes (before the old `EditorPane` is dropped),
-- the vault is closed or switched,
-- `cx.on_app_quit` (and the main window closing),
+The write itself runs on the UI thread, on purpose. Notes are small, so it takes well under a frame, and a single writer means two saves can never race on the same temp file.
+
+When to save immediately (`save_now`):
+- another note gets selected. The workspace saves the old pane first, unless its file no longer exists: a deleted note must not be written back.
+- the open note is renamed or moved. The pane isn't recreated; `VaultStore::last_move` lets the workspace call `set_path`, so unsaved typing follows the note.
+- `cx.on_app_quit`, and when the window closes (the app quits when its only window closes).
 - `secondary-s`, as an explicit "save now".
+
+Files that aren't valid UTF-8 open read-only (`can_save = false`) and are never written.
 
 `atomic_write`: write to `.<name>.kunotes.tmp` in the same directory, `fsync`, then rename over the target. `std::fs::rename` replaces existing files on Windows too. The temp name starts with a dot, so the tree scanner skips it.
 

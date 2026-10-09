@@ -17,9 +17,16 @@ actions!(
         ToggleSidebar,
         DeleteSelection,
         RenameSelection,
+        ViewSource,
+        ViewSplit,
+        ViewPreview,
+        CycleViewMode,
         Quit,
     ]
 );
+
+// Editor commands. Only active while the editor pane has focus.
+actions!(editor, [SaveNow, FormatBold, FormatItalic, FormatLink]);
 
 // File tree keyboard navigation. Only active while the tree has focus.
 actions!(
@@ -36,6 +43,9 @@ actions!(
 /// Key context of the main window. Bindings with this context work anywhere in it.
 pub const WORKSPACE: &str = "Workspace";
 
+/// Key context of the editor pane (editor, formatter bar, preview).
+pub const EDITOR: &str = "EditorPane";
+
 /// Key context of the file tree. Bindings here only work while the tree has focus,
 /// so e.g. Backspace deletes a file only when you're in the tree, never while typing.
 pub const FILE_TREE: &str = "FileTree";
@@ -47,6 +57,14 @@ pub fn bind_keys(cx: &mut App) {
         KeyBinding::new("secondary-n", NewFile, Some(WORKSPACE)),
         KeyBinding::new("secondary-shift-n", NewFolder, Some(WORKSPACE)),
         KeyBinding::new("secondary-\\", ToggleSidebar, Some(WORKSPACE)),
+        KeyBinding::new("secondary-2", ViewSource, Some(WORKSPACE)),
+        KeyBinding::new("secondary-3", ViewSplit, Some(WORKSPACE)),
+        KeyBinding::new("secondary-4", ViewPreview, Some(WORKSPACE)),
+        KeyBinding::new("secondary-e", CycleViewMode, Some(WORKSPACE)),
+        KeyBinding::new("secondary-s", SaveNow, Some(EDITOR)),
+        KeyBinding::new("secondary-b", FormatBold, Some(EDITOR)),
+        KeyBinding::new("secondary-i", FormatItalic, Some(EDITOR)),
+        KeyBinding::new("secondary-shift-k", FormatLink, Some(EDITOR)),
         KeyBinding::new("up", SelectPrevious, Some(FILE_TREE)),
         KeyBinding::new("down", SelectNext, Some(FILE_TREE)),
         KeyBinding::new("right", ExpandFolder, Some(FILE_TREE)),
@@ -78,6 +96,12 @@ pub fn app_menus() -> Vec<Menu> {
             MenuItem::separator(),
             MenuItem::action("Close Vault", CloseVault),
         ]),
-        Menu::new("View").items([MenuItem::action("Toggle Sidebar", ToggleSidebar)]),
+        Menu::new("View").items([
+            MenuItem::action("Toggle Sidebar", ToggleSidebar),
+            MenuItem::separator(),
+            MenuItem::action("Source", ViewSource),
+            MenuItem::action("Split", ViewSplit),
+            MenuItem::action("Preview", ViewPreview),
+        ]),
     ]
 }

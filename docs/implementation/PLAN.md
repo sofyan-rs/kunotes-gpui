@@ -115,21 +115,25 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done
 
 ---
 
-## Phase 4: Source editor, preview, autosave
+## Phase 4: Source editor, preview, autosave ✅
 
 **Goal:** edit (Source mode), preview, and save (§6.3–§6.5, §7.1). Live mode comes in Phases 9–10; until then Source is the default.
 
-- [ ] `ui/editor/mod.rs`: recreated per file, loads content (lossy UTF-8 fallback with a warning), preserves line endings.
-- [ ] Source editor: monospace 15px, soft wrap, padding, no line numbers, markdown highlighting.
-- [ ] `autosave.rs`: `SaveDebouncer` (500ms). Flush on file switch, vault switch/close, window close, app quit, and `secondary-s`. Uses `atomic_write` in the background.
-- [ ] Breadcrumb (relative path, chevrons, last segment emphasized).
-- [ ] View-mode segmented toggle (Source/Split/Preview for now; Live segment hidden until Phase 9) + `secondary-2/3/4`, `secondary-e` to cycle, persisted in settings.
-- [ ] `ui/editor/preview.rs`: `TextView` markdown, scrollable, selectable, links open in the browser, ~150ms throttle in Split mode. Implement the pulldown-cmark fallback **only if** the Phase 0 spike found TextView insufficient.
-- [ ] Split: `h_resizable` 50/50.
-- [ ] `ui/editor/formatter_bar.rs`: 11 buttons in 5 groups with tooltips, wired to `kunotes_core::format` through one undoable replace each. Restores the selection/cursor and editor focus.
-- [ ] Editor shortcuts: `secondary-b`, `secondary-i`, `secondary-shift-k`.
-- [ ] `ui/editor/status_bar.rs`: `Ln, Col` + character count, updated on cursor move and edits.
-- [ ] Window/title-bar title = file stem.
+- [x] `ui/editor/mod.rs`: `load_note` + `EditorPane`, recreated per note. Lossy UTF-8 → read-only with a warning. Line endings preserved.
+- [x] Source editor: `EditorState` markdown highlighting, soft wrap, no line numbers, no folding, 15px, padding.
+- [x] Autosave 500ms after typing (`save_now` on the UI thread, no races). Immediate save on note switch, window close, quit, and `secondary-s`. Deleted notes are never written back. Renamed/moved open notes keep unsaved typing (`VaultStore::last_move` + `set_path`).
+- [x] Breadcrumb (vault-relative, chevrons, last part emphasized).
+- [x] View-mode segmented toggle (Source/Split/Preview) + `secondary-2/3/4`, `secondary-e` to cycle, View menu items, persisted in settings.
+- [x] `ui/editor/preview.rs`: `TextView` markdown, scrollable, selectable, links open in the browser, ~150ms throttle while typing. No pulldown-cmark fallback was needed.
+- [x] Split: `h_resizable` 50/50.
+- [x] `ui/editor/formatter_bar.rs`: 11 buttons in 5 groups with tooltips, each one undoable edit through `apply_format`. Keeps the selection and editor focus.
+- [x] Editor shortcuts: `secondary-b`, `secondary-i`, `secondary-shift-k`.
+- [x] `ui/editor/status_bar.rs`: `Ln, Col` + character count (cached, recomputed on change).
+- [x] Window/title-bar title = note title.
+
+**Tests:** 8 headless UI tests in `ui/editor/editor_tests.rs` cover: note loads; autosave waits for the pause; switching saves immediately; renaming the open note keeps unsaved typing and doesn't recreate the old file; a deleted note isn't written back; the Bold button; view-mode shortcuts; CRLF round-trip. Deliberately breaking save-on-switch or rename-follow makes the matching test fail. Shared setup lives in `ui/test_helpers.rs`.
+
+**Checked on macOS 15.8 (screenshot):** Split view of `Example.md` shows highlighted source, a rendered preview (headings, emphasis, inline code, task-list checkboxes, nested lists, numbered list, blockquote), all formatter icons, and the status bar.
 
 **Done when:** typing autosaves within ~0.5s, switching files or quitting mid-typing loses nothing (verified manually on each OS), the preview renders every element in `fixtures/sample-vault/Example.md` as specified in §6.5, and all formatter buttons behave as specified.
 

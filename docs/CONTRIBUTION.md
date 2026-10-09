@@ -96,6 +96,7 @@ The full tree, the rules for adding files, and the "where does my code go?" tabl
 - Timers and debounces: store the `Task`. Dropping or replacing it cancels the work.
 - Key contexts: give focusable views a `key_context` (`Workspace`, `FileTree`, `EditorPane`) and scope keybindings to them.
 - Import from `gpui_kit::*` and `gpui_kit::component::…`. Don't add `gpui` as a direct dependency.
+- Icons: use `gpui_kit::assets::IconName`. gpui-kit embeds only ~100 icons by default, so a new icon must be added to `icon_assets!` in `crates/kunotes/src/assets.rs` or it renders blank. Watch the log for `could not find asset at path "icons/…"`.
 
 ### Cross-platform rules
 - Keybindings use `secondary-` (cmd on macOS, ctrl elsewhere). Never `cmd-` or `ctrl-` alone unless the binding really is OS-specific, and then gate it with `#[cfg]`.

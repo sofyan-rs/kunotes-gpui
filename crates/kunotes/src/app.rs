@@ -15,6 +15,8 @@ pub fn run(cx: &mut App) {
     install_menus(cx);
 
     cx.on_action(|_: &Quit, cx| cx.quit());
+    // KuNotes has one window; closing it quits (which also saves the open note).
+    cx.on_window_closed(|cx, _| cx.quit()).detach();
     cx.on_app_quit(|cx| {
         SettingsStore::save_now(cx);
         async {}

@@ -12,11 +12,11 @@ gpui_kit::assets::icon_assets!(
     [
         Bold,
         Code,
-        FilePlus,
         FolderPlus,
         Heading1,
         Heading2,
         Italic,
+        Link,
         List,
         ListOrdered,
         NotebookPen,

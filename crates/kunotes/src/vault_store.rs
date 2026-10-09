@@ -32,6 +32,9 @@ pub struct VaultStore {
     selected_path: Option<PathBuf>,
     /// Folders the user expanded in the tree. Kept across rescans.
     expanded: HashSet<PathBuf>,
+    /// The most recent rename/move (`old`, `new`). The editor uses it to follow
+    /// the open note to its new path instead of losing unsaved typing.
+    last_move: Option<(PathBuf, PathBuf)>,
     /// Increased on every scan so a slow, outdated scan can't overwrite a newer one.
     scan_generation: u64,
     scan_task: Option<Task<()>>,
@@ -48,6 +51,17 @@ impl VaultStore {
 
     pub fn tree(&self) -> Option<&VaultNode> {
         self.tree.as_ref()
+    }
+
+    /// The note that should be open in the editor.
+    pub fn selected_file(&self) -> Option<&Path> {
+        self.selected_file.as_deref()
+    }
+
+    pub fn last_move(&self) -> Option<(&Path, &Path)> {
+        self.last_move
+            .as_ref()
+            .map(|(old, new)| (old.as_path(), new.as_path()))
     }
 
     pub fn selected_path(&self) -> Option<&Path> {
@@ -236,6 +250,7 @@ impl VaultStore {
 
     /// After `old` became `new`, points the selection and expanded folders at the new paths.
     fn remap(&mut self, old: &Path, new: &Path) {
+        self.last_move = Some((old.to_path_buf(), new.to_path_buf()));
         let update = |slot: &mut Option<PathBuf>| {
             if let Some(path) = slot.as_deref()
                 && let Some(moved) = remap_path(path, old, new)
