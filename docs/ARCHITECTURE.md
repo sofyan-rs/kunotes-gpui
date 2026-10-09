@@ -1,0 +1,438 @@
+# Architecture
+
+KuNotes is a minimal, cross-platform (macOS, Windows, Linux) markdown vault app. The Linux target is **Fedora** (Workstation, GNOME/Wayland first; KDE spin second). It uses Rust, [GPUI](https://www.gpui.rs/), and [GPUI Kit](https://gpui-kit.com/) (`gpui-kit` crate, which bundles GPUI, GPUI Base, the component library, and default icons).
+
+Scope: **open a folder, browse it, edit markdown.** There are no wikilinks, backlinks, graph view, tags, or plugins. Files on disk are the only source of truth, so there is no database, sync service, or lock-in.
+
+---
+
+## 1. Goals and non-goals
+
+### Goals
+- Ship the feature set in [§10 Feature summary](#10-feature-summary).
+- One codebase that builds and behaves the same on macOS 15+, Windows 10+, and Fedora Linux (Wayland/X11 with Vulkan).
+- Never lose user data: debounced autosave, flush on file switch or quit, atomic writes, delete moves to the OS trash.
+- Stay responsive on large vaults: no blocking filesystem I/O on the UI thread.
+- Keep logic testable: pure logic lives in a crate with no GPUI dependency and has unit tests.
+
+### Non-goals (for now)
+- Wikilinks, backlinks, tags, graph, plugins, sync.
+- Multiple windows or multiple vaults open at once.
+- Tabs or multiple open files.
+- Reloading the open editor's content when the file changes on disk (see [§7.3](#73-external-changes-to-the-open-file)).
+
+---
+
+## 2. Tech stack
+
+| Concern | Choice | Notes |
+|---|---|---|
+| UI framework | `gpui-kit = "0.7.1"` | Re-exports GPUI. Do not add `gpui` separately. |
+| Toolchain | Rust ≥ 1.92, edition 2024 | 1.92 is required by gpui-kit's locked dependency graph. Windows needs the MSVC toolchain. |
+| Markdown preview | `gpui_kit::component::text::TextView::markdown` | Fallback if task lists don't render: `pulldown-cmark` plus a custom renderer (§6.5). |
+| Editor | gpui-kit `EditorState` / `TextareaState` (multi-line, soft wrap) | Exact type is picked in the Phase 0 spike (§11). |
+| File watching | `notify` + `notify-debouncer-full` | FSEvents on macOS, ReadDirectoryChangesW on Windows, inotify on Linux. |
+| Trash | `trash` crate | macOS Trash, Windows Recycle Bin, freedesktop trash on Linux. |
+| Reveal in file manager | `opener` crate (`reveal` feature) | Finder, Explorer, or the default Linux file manager. |
+| Config dir | `dirs` crate | `dirs::config_dir()/kunotes/` |
+| Settings serialization | `serde` + `serde_json` | |
+| Natural sort | `natord` | Case-insensitive, `a2` sorts before `a10`. |
+| Character count | `unicode-segmentation` | Counts grapheme clusters, so an emoji counts as one character. |
+| Errors and logging | `thiserror` (core), `anyhow` (app), `log` + `env_logger` | |
+| Folder picker | GPUI `cx.prompt_for_paths(PathPromptOptions { directories: true, .. })` | Native dialog on each OS; uses the XDG portal on Linux. |
+| Clipboard | GPUI `cx.write_to_clipboard(ClipboardItem::new_string(..))` | |
+
+Exact versions are pinned in `Cargo.lock` once Phase 0 is done.
+
+---
+
+## 3. Workspace layout
+
+```
+kunotes-gpui/
+├── Cargo.toml                  # [workspace], shared deps, profile.dev.package opt-levels
+├── crates/
+│   ├── kunotes-core/           # PURE logic. No gpui dependency. Fast unit tests.
+│   │   └── src/
+│   │       ├── lib.rs
+│   │       ├── node.rs         # VaultNode + scan()
+│   │       ├── fs_ops.rs       # create/rename/move/trash/unique_path, atomic_write
+│   │       ├── names.rs        # cross-platform filename validation
+│   │       ├── paths.rs        # relative_path, breadcrumb components
+│   │       ├── format.rs       # markdown formatter transforms (text + range -> text + range)
+│   │       ├── cursor.rs       # byte offset -> (line, col), char count
+│   │       ├── search.rs       # flatten files, quick-switcher filter, tree visible rows
+│   │       └── settings.rs     # Settings struct + load/save (serde)
+│   └── kunotes/                # GPUI app (binary)
+│       ├── src/
+│       │   ├── main.rs         # application().with_assets().run(..)
+│       │   ├── app.rs          # init: actions, keybindings, menus, theme, window
+│       │   ├── actions.rs      # actions! declarations
+│       │   ├── vault.rs        # VaultStore entity (state + events)
+│       │   ├── watcher.rs      # notify -> async channel -> VaultStore::refresh
+│       │   ├── save.rs         # SaveDebouncer
+│       │   ├── platform.rs     # per-OS labels ("Reveal in Finder" / "Show in Explorer" / ...)
+│       │   └── ui/
+│       │       ├── workspace.rs        # root view: title bar + resizable(sidebar, detail)
+│       │       ├── title_bar.rs
+│       │       ├── sidebar.rs          # header icon bar + FileTree / "No Vault Open"
+│       │       ├── file_tree.rs        # custom tree on uniform_list (see §6.2)
+│       │       ├── editor_pane.rs      # breadcrumb, view-mode toggle, editor/preview, status bar
+│       │       ├── formatter_bar.rs
+│       │       ├── preview.rs
+│       │       ├── status_bar.rs
+│       │       ├── quick_switcher.rs
+│       │       ├── empty_state.rs
+│       │       └── dialogs.rs          # rename prompt, delete confirm
+│       └── assets/                     # app icon, extra icons if needed
+├── packaging/                  # macOS bundle, Windows icon/manifest, Linux .desktop
+└── docs/
+```
+
+**Why split `kunotes-core`?** Vault scanning, file operations, name validation, path math, and text transforms are all pure logic. Keeping them out of the GPUI crate means `cargo test -p kunotes-core` builds in seconds, runs headless on CI for all three OSes, and keeps UI code thin.
+
+---
+
+## 4. Runtime model
+
+```
+                     ┌────────────────────────────────────────┐
+                     │        Workspace (root view)            │
+                     │  owns Entity<VaultStore>, view mode,    │
+                     │  sidebar visibility, Settings           │
+                     └──────┬───────────────────┬──────────────┘
+                 subscribe  │                   │ subscribe
+              ┌─────────────▼─────┐     ┌───────▼────────────────┐
+              │  Sidebar          │     │  EditorPane            │
+              │  └ FileTree       │     │  (re-created per file) │
+              └─────────┬─────────┘     └───────┬────────────────┘
+                        │ update()              │ read file / SaveDebouncer
+                        ▼                       ▼
+              ┌──────────────────────────────────────────────┐
+              │  VaultStore (Entity)                          │
+              │  vault_root, root_node, selected_file,        │
+              │  selected_path, expanded: HashSet<PathBuf>    │
+              │  emits VaultEvent                              │
+              └──────────▲───────────────────────┬───────────┘
+                         │ refresh()             │ fs ops → kunotes-core
+              ┌──────────┴──────────┐            ▼
+              │  Watcher (notify)   │      disk (source of truth)
+              │  background thread  │
+              └─────────────────────┘
+```
+
+### 4.1 `VaultStore` (Entity)
+
+This is the single source of truth for the vault tree and selection.
+
+```rust
+pub struct VaultStore {
+    vault_root: Option<PathBuf>,
+    root_node: Option<VaultNode>,
+    selected_file: Option<PathBuf>,   // file shown in the editor
+    selected_path: Option<PathBuf>,   // tree selection (file OR folder), used by delete
+    expanded: HashSet<PathBuf>,       // tree expansion; survives refreshes
+    watcher: Option<VaultWatcher>,
+    scan_generation: u64,             // discards stale background scans
+}
+
+pub enum VaultEvent {
+    TreeChanged,
+    SelectedFileChanged(Option<PathBuf>),
+    SelectionChanged(Option<PathBuf>),
+    Error(String),                    // surfaced as a notification
+}
+impl EventEmitter<VaultEvent> for VaultStore {}
+```
+
+Methods (each wraps a `kunotes-core` function, then calls `refresh` and updates selection):
+
+| Method | Behavior |
+|---|---|
+| `open_vault(path)` | Stop the old watcher, set the root, save settings, `refresh`, start the watcher. |
+| `restore_last_vault()` | Read `Settings.last_vault`. If the directory still exists, call `open_vault`; otherwise clear it. |
+| `close_vault()` | Drop the watcher, clear state, forget the saved vault. |
+| `refresh()` | Rescan on `cx.background_spawn`, apply the result on the main thread if `scan_generation` still matches, emit `TreeChanged`. Prune `expanded` entries that no longer exist. |
+| `create_file(parent)` | Pick a unique `Untitled.md`, seed it with `# Untitled\n`, select it, expand the parent. |
+| `create_folder(parent)` | Pick a unique `New Folder`. |
+| `rename(path, new_name)` | Validate the name (§8.2). Append `.md` to files typed without an extension. Remap paths (below). |
+| `move_into(path, folder)` | Reject moving into itself or a descendant, and reject collisions. Remap paths (below). |
+| `trash(path)` | `trash::delete`. Clear the selection if it pointed at the path or something under it. |
+
+**Remapping paths on rename and move:** any `selected_file`, `selected_path`, or `expanded` entry equal to or under the old path is rewritten to the new path. Renaming a folder that contains the open file keeps that file open.
+
+### 4.2 Threading rules
+
+- **Main thread:** GPUI rendering and entity updates only.
+- **Background (`cx.background_spawn`):** directory scans, file reads larger than a trivial size, and writes.
+- **Watcher thread:** owned by `notify`. It only sends a unit signal over an async channel. A `cx.spawn` loop on the GPUI side receives it and calls `VaultStore::refresh`.
+- Small single-file reads and writes on file switch may stay synchronous if profiling shows they're fine, but scans must never run on the main thread.
+
+### 4.3 Settings persistence
+
+The app isn't sandboxed, so the last vault is stored as a plain path.
+
+```rust
+// dirs::config_dir()/kunotes/settings.json
+#[derive(Serialize, Deserialize, Default)]
+pub struct Settings {
+    pub last_vault: Option<PathBuf>,
+    pub view_mode: ViewMode,          // Edit | Split | Preview
+    pub sidebar_width: Option<f32>,
+    pub sidebar_visible: bool,
+}
+```
+
+Settings are written atomically and saved on change (debounced). A missing or corrupt file falls back to `Default`.
+
+---
+
+## 5. Window and layout
+
+```
+┌─ TitleBar ───────────────────────────────────────────────────────────┐
+│ ● ● ●  [▤ sidebar toggle]            Example                           │
+├─ Sidebar (resizable 200–400, default 250) ─┬─ EditorPane ─────────────┤
+│ [📁][✎][📁+][🗑]                       [🔍] │ TEST › Example  [Edit|Split|Preview]
+│ ▾ 📁 TEST                                   │ [B][I] | H1 H2 | 🔗 <> {} ❝ | • 1. | ─
+│     📄 Example.md   (selected)              │ ┌─ editor ──────┬─ preview ─────┐
+│ ▸ 📁 Account                                │ │ # Example      │ Example       │
+│ ▸ 📁 AI                                     │ │ ...            │ ...           │
+│   ...                                       │ └───────────────┴───────────────┘
+│                                             │ Ln 5, Col 13          539 characters
+└─────────────────────────────────────────────┴──────────────────────────┘
+```
+
+- Window options: `TitleBar::window_options()` with `app_owns_titlebar_drag: true` on macOS. On Windows and Linux, `TitleBar` draws its own window controls.
+- Root: `gpui_kit::open_window(..)` wraps the workspace in `Root`, which hosts dialogs, sheets, and notifications.
+- Layout: `h_resizable("workspace")` → `resizable_panel().size(250).size_range(200..400).visible(sidebar_visible)` plus the detail element. Subscribe to `ResizablePanelEvent::Resized` to persist `sidebar_width`.
+- Theme: follows the system light/dark appearance. Accent color is blue.
+
+---
+
+## 6. Components
+
+### 6.1 Sidebar (`ui/sidebar.rs`)
+
+The header icon bar, left to right:
+
+| Icon | Action | Shortcut | Disabled when |
+|---|---|---|---|
+| folder | Open vault… | `secondary-o` | – |
+| square-pen | New file in vault root | `secondary-n` | no vault |
+| folder-plus | New folder in vault root | `secondary-shift-n` | no vault |
+| trash | Delete selection (confirm) | `backspace` / `delete` / `secondary-backspace` *(FileTree context only)* | nothing selected |
+| *(spacer)* | | | |
+| search | Quick switcher | `secondary-k`, `secondary-shift-o` | no vault |
+
+The body shows `FileTree` when a vault is open. Otherwise it shows "No Vault Open" and an "Open Vault…" button.
+
+The delete keybinding is scoped to the `FileTree` key context, so it can never fire while typing in the editor.
+
+### 6.2 File tree (`ui/file_tree.rs`): custom, not `Tree`
+
+The gpui-kit `Tree` component's docs don't cover double-click, context menus, or drag-and-drop, and they don't expose expansion changes. We need expansion to survive rescans triggered by the watcher.
+
+**Decision:** build `FileTree` on GPUI `uniform_list` over a **flattened list of visible rows**, styled with gpui-kit `ListItem` and icons. We own the model, so every interaction is explicit:
+
+```rust
+struct VisibleRow { path: PathBuf, name: SharedString, depth: usize, is_dir: bool, is_expanded: bool }
+
+fn visible_rows(root: &VaultNode, expanded: &HashSet<PathBuf>) -> Vec<VisibleRow>  // in kunotes-core, tested
+```
+
+| Interaction | Implementation |
+|---|---|
+| Single click | Select. If it's a file, set `selected_file` too. |
+| Double-click a folder | Toggle expansion (check `ClickEvent` click count == 2). |
+| Click the chevron | Toggle expansion. |
+| Keyboard | `up`/`down` move the selection; `right` expands; `left` collapses or jumps to the parent; `enter` toggles a folder or opens a file. |
+| Context menu | `ContextMenuExt::context_menu` on each row. Folders: New File, New Folder, separator. All rows: Rename…, Delete, separator, Reveal in Finder / Show in Explorer / Open Containing Folder, Copy Path, Copy Relative Path. |
+| Drag and drop | Row `.on_drag(DraggedEntry { path }, preview)`. Folder rows and empty space below the list get `.drag_over::<DraggedEntry>(highlight)` and `.on_drop::<DraggedEntry>(→ VaultStore::move_into)`. Dropping on a file row is ignored. Dropping on empty space moves the item to the vault root. |
+| Icons | Folder (blue) and file-text (muted). The icon turns white on the selected row. |
+| Sort | Folders first, then natural case-insensitive order (`natord`). |
+
+If Phase 0 shows that `Tree` can cover all of this cleanly, swapping it in is a contained change, because `visible_rows` and the `expanded` set stay the same.
+
+### 6.3 Editor pane (`ui/editor_pane.rs`)
+
+A new `EditorPane` entity is created whenever `selected_file` changes, so per-file state never leaks between files.
+
+- **Load:** read the file as UTF-8 (lossy fallback with a warning notification), then `set_value`. Keep the original line ending style (`\n` vs `\r\n`) and write it back unchanged.
+- **Header row:** breadcrumb on the left (path relative to the vault root, vault name omitted, `.md` stripped, last segment highlighted, chevron separators). Edit/Split/Preview `ToggleGroup::segmented()` on the right. ToggleGroup is multi-state, so the view keeps a single `ViewMode` and sets `checked(mode == X)` on each toggle.
+- **Formatter bar:** shown in Edit and Split modes (§6.4).
+- **Body:**
+  - Edit: editor only.
+  - Preview: `TextView` only.
+  - Split: `h_resizable("split")`, defaulting to 50/50.
+- **Editor styling:** monospace 15px, soft wrap, ~25px padding, no line numbers, markdown syntax highlighting if the `tree-sitter-markdown` feature works.
+- **Status bar** (`StatusBar` component): left `Ln {line}, Col {col}` (1-based, from the cursor offset via `kunotes_core::cursor`), right `{n} characters` (grapheme count). Monospace 11px.
+- **Title:** the window title and the centered title-bar text show the file name without `.md`.
+
+### 6.4 Formatter bar (`ui/formatter_bar.rs`)
+
+Each button calls a **pure** transform in `kunotes_core::format` and applies the result to the editor in one undoable replace. Then it sets the new selection or cursor.
+
+```rust
+pub struct Edit { pub range: Range<usize>, pub replacement: String, pub new_selection: Range<usize> }
+
+pub fn wrap(text: &str, sel: Range<usize>, prefix: &str, suffix: &str) -> Edit;   // **bold**, *italic*, `code`
+pub fn line_prefix(text: &str, sel: Range<usize>, prefix: &str) -> Edit;           // "# ", "## ", "> ", "- ", "1. "
+pub fn link(text: &str, sel: Range<usize>) -> Edit;                                // [sel](url), selects "url"
+pub fn code_block(text: &str, sel: Range<usize>) -> Edit;                          // ```\nsel\n```
+pub fn horizontal_rule(text: &str, sel: Range<usize>) -> Edit;                     // \n\n---\n\n
+```
+
+Groups: **B** *I* | H1 H2 | link, inline code, code block, quote | bullet, numbered | horizontal rule.
+
+Ranges are **UTF-8 byte offsets on char boundaries**, which matches GPUI's text APIs. Tests cover multi-byte text (emoji, CJK).
+
+With no selection, transforms apply at the cursor position. They fall back to the end of the document only if the editor has never been focused.
+
+### 6.5 Preview (`ui/preview.rs`)
+
+- `TextView::markdown("preview", content).scrollable(true)` with selectable text (on by default) and ~25px padding.
+- It must render: headings H1–H6, paragraphs, bold, italic, inline code (accent color), links (accent color with underline, opened in the browser via `cx.open_url`), fenced code blocks (muted rounded background, monospace), ordered and unordered lists with nesting, task lists with checked and unchecked boxes, blockquotes (accent left bar, muted text), and thematic breaks.
+- **Throttle:** in Split mode, update the preview at most every ~150ms while typing, so large notes don't re-parse on every keystroke.
+- **Fallback:** if `TextView` can't render task-list checkboxes or the styles above, replace it with `pulldown-cmark` events → our own GPUI element tree. This is isolated in `preview.rs`.
+
+### 6.6 Quick switcher (`ui/quick_switcher.rs`)
+
+- Opened with `window.open_dialog(..)` containing a gpui-kit `Command` palette. Width 480.
+- Items: every `.md` file in the vault, flattened (`kunotes_core::search::flatten_files`). The label is the name without `.md`. The right-hand hint is the parent folder name in uppercase.
+- Filter: case-insensitive substring on the file name (Command's built-in matching; add the relative path as a keyword).
+- Keys: `up`/`down` move the highlight, `enter` opens the file and closes the dialog, `escape` closes it. Footer hints: "↑↓ move · ↵ open · esc close".
+- Empty state: "No matches".
+
+### 6.7 Dialogs (`ui/dialogs.rs`)
+
+- **Rename:** a dialog with an `Input` pre-filled with the name (without `.md` for files) and focused with the text selected. Enter confirms and Esc cancels. Invalid names show an inline error and don't close the dialog.
+- **Delete:** an `AlertDialog` titled "Delete?" that names the item, with a destructive "Move to Trash" button and Cancel.
+- **Errors** (I/O failures, name collisions) appear as `window.push_notification(..)`. Nothing fails silently.
+
+### 6.8 Empty states (`ui/empty_state.rs`)
+
+- No vault: a large muted folder-plus icon, "No Vault Selected", "Open a folder to use it as your vault.", and an [Open Vault…] button.
+- Vault open but no file selected: a note icon, "No File Selected", "Select a file from the sidebar to start writing."
+
+---
+
+## 7. Data integrity
+
+### 7.1 Save pipeline (`save.rs`)
+
+```
+InputEvent::Change ─► SaveDebouncer::schedule(content, path)
+                          │  replaces the pending task (drop = cancel)
+                          ▼
+                 cx.spawn: timer(500ms) ─► flush()
+flush(): if pending.take() → background atomic_write(path, content)
+```
+
+When to flush immediately:
+- the selected file changes (before the old `EditorPane` is dropped),
+- the vault is closed or switched,
+- `cx.on_app_quit` (and the main window closing),
+- `secondary-s`, as an explicit "save now".
+
+`atomic_write`: write to `.<name>.kunotes.tmp` in the same directory, `fsync`, then rename over the target. `std::fs::rename` replaces existing files on Windows too. The temp name starts with a dot, so the tree scanner skips it.
+
+### 7.2 Watcher (`watcher.rs`)
+
+- `notify-debouncer-full` uses a recursive watch on the vault root with a 500ms debounce.
+- Any event sends a refresh signal. Our own writes also trigger a rescan. That's harmless because the rescan is cheap and runs in the background, and the tree diff keeps the selection and expansion.
+- On Linux, inotify watch limits can be hit on huge vaults. On error, log it, push one notification ("Live sync unavailable"), and keep the app working.
+
+### 7.3 External changes to the open file
+
+Out of scope for v1: the editor doesn't reload when the open file changes on disk, so the next autosave overwrites the external edit. A later improvement would detect an mtime mismatch before saving and prompt.
+
+---
+
+## 8. Cross-platform concerns
+
+### 8.1 Keybindings
+
+Use GPUI's `secondary-` modifier, which is `cmd` on macOS and `ctrl` on Windows and Linux, for every app shortcut. Never hard-code `cmd-`.
+
+| Action | Binding | Context |
+|---|---|---|
+| Open vault | `secondary-o` | Workspace |
+| New file | `secondary-n` | Workspace |
+| New folder | `secondary-shift-n` | Workspace |
+| Quick switcher | `secondary-k`, `secondary-shift-o` | Workspace |
+| Save now | `secondary-s` | EditorPane |
+| Toggle sidebar | `secondary-\` | Workspace |
+| View: Edit / Split / Preview | `secondary-1` / `secondary-2` / `secondary-3` | Workspace |
+| Bold / Italic / Link | `secondary-b` / `secondary-i` / `secondary-shift-k` | Editor |
+| Delete selection | `backspace`, `delete`, `secondary-backspace` | FileTree |
+| Rename selection | `f2` (Win/Linux), `enter` (macOS Finder-like) | FileTree |
+| Quit | `cmd-q` (macOS), `ctrl-q` (Linux), `alt-f4` (Windows, provided by the OS) | global |
+
+### 8.2 Filenames (`kunotes_core::names`)
+
+Rename and create reject, with a readable error:
+- empty or whitespace-only names, `.` and `..`,
+- path separators `/` and `\` (prevents escaping the parent dir),
+- on **all** platforms, Windows-invalid characters `< > : " | ? *` and control characters (vaults move between OSes via git, Dropbox, and similar),
+- Windows reserved names (`CON`, `PRN`, `AUX`, `NUL`, `COM1`–`COM9`, `LPT1`–`LPT9`, case-insensitive, with or without an extension),
+- names ending in a space or a dot.
+
+**Case-only renames** (`note.md` → `Note.md`) on case-insensitive filesystems (the macOS and Windows defaults): rename via a temporary name so the collision check doesn't block it.
+
+### 8.3 Scanning
+
+- Include directories and files whose extension is `md` (case-insensitive). Skip anything whose name starts with `.` (covers `.git`, `.obsidian`, and our temp files).
+- **Don't follow directory symlinks** (prevents cycles). Symlinked `.md` files are shown.
+- Unreadable directories are shown empty, not as an error.
+
+### 8.4 OS integration labels (`platform.rs`)
+
+| | macOS | Windows | Linux |
+|---|---|---|---|
+| Reveal | "Reveal in Finder" | "Show in Explorer" | "Open Containing Folder" |
+| Trash wording | "Move to Trash" | "Move to Recycle Bin" | "Move to Trash" |
+| App menu | native menu bar via `cx.set_menus` | menu in the title bar | menu in the title bar |
+
+### 8.5 Linux (Fedora) runtime requirements
+A Wayland or X11 session with a working Vulkan driver (`vulkan-loader` plus Mesa or the vendor driver). The folder picker uses the XDG desktop portal. Fedora Workstation ships `xdg-desktop-portal-gnome`; the KDE spin ships `xdg-desktop-portal-kde`. Distribution is `.rpm` (see PLAN Phase 8).
+
+---
+
+## 9. Error handling
+
+- `kunotes-core` returns `Result<T, CoreError>` (`thiserror`), with variants such as `NameInvalid(reason)`, `AlreadyExists(path)`, `MoveIntoSelf`, and `Io(io::Error)`.
+- `VaultStore` turns errors into `VaultEvent::Error`, and `Workspace` shows them with `push_notification`.
+- Nothing is silently swallowed except "file vanished during scan", which is expected during external churn.
+
+---
+
+## 10. Feature summary
+
+| Area | Features | Spec |
+|---|---|---|
+| Vault | Open a folder via the native picker, reopen the last vault on launch | §4.1, §4.3 |
+| File tree | Folders + `.md` only, folders first, natural sort; click to select, double-click or chevron to expand; keyboard nav; drag-and-drop move; context menu | §6.2, §8.3 |
+| File ops | New file (`Untitled.md`, seeded `# Untitled`), new folder, rename (auto `.md`, validated), delete to OS trash with confirmation | §4.1, §6.7, §8.2 |
+| Editor | Plain-text markdown editing, soft wrap, Edit / Split / Preview modes, formatter bar, breadcrumb, status bar (Ln/Col, characters) | §6.3, §6.4 |
+| Preview | CommonMark: headings, emphasis, inline code, code blocks, nested lists, task lists, blockquotes, links, rules; selectable text | §6.5 |
+| Saving | Debounced atomic autosave, flushed on switch and quit | §7.1 |
+| Quick switcher | Filter all notes by name, keyboard driven | §6.6 |
+| Live sync | Changes made outside the app appear in the tree | §7.2 |
+| Layout | Resizable, toggleable sidebar; view mode and sidebar width remembered | §5, §4.3 |
+
+---
+
+## 11. Open questions (resolved in the Phase 0 spike)
+
+The gpui-kit docs don't fully specify these, so each must be checked against `docs.rs/gpui-kit` and source before the related phase starts:
+
+1. **Editor API:** which of `EditorState` / `TextareaState` / `InputState` gives soft wrap, a cursor offset or position, a selected range (get and set), and an undoable `replace(range, text)` for the formatter bar? Does `.language("markdown")` with `tree-sitter-markdown` work?
+2. **TextView:** does it render task-list checkboxes, and can heading sizes, code block background, and blockquote bar be styled? If not, use the fallback (§6.5).
+3. **`secondary-` modifier:** confirm it's supported in `KeyBinding::new` in the GPUI version that gpui-kit 0.7.1 pins.
+4. **Click count / double-click** on `ListItem::on_click` (`ClickEvent`).
+5. **Drag and drop** inside `uniform_list` rows (`on_drag` / `on_drop` / `drag_over`).
+6. **`ToggleGroup`** behavior when the already-checked segment is clicked.
+7. **App menu** on Windows and Linux: does gpui-kit provide an app menu bar component, or do we build a dropdown in the title bar?
+8. **System theme sync:** the API for following OS light/dark changes at runtime.
+9. **`prompt_for_paths` on Linux** without a portal: what's the failure mode, and do we need a fallback message?
