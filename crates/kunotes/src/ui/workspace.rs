@@ -36,7 +36,14 @@ pub struct Workspace {
 
 impl Workspace {
     pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
-        let vault = cx.new(|_| VaultStore::default());
+        let vault = cx.new(|_| {
+            #[cfg_attr(not(test), allow(unused_mut))]
+            let mut vault = VaultStore::default();
+            // UI tests: the OS watcher's thread would break the test scheduler.
+            #[cfg(test)]
+            vault.disable_live_sync();
+            vault
+        });
         let sidebar = cx.new(|cx| Sidebar::new(vault.clone(), cx));
         let editor_area = cx.new(|cx| EditorArea::new(vault.clone(), window, cx));
 

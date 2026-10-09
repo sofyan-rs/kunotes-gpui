@@ -1,11 +1,9 @@
-//! Styles markdown inside the editor, for both Live and Source mode.
+//! Styles markdown inside the Source/Split editor (gpui-kit's code editor).
 //!
 //! The parts of the note come from `kunotes_core::live::spans`. This file turns
 //! them into colors and font styles, using the theme's syntax colors (so light
-//! and dark themes both work):
-//! - Live: heading text bold, emphasis shown, and the markdown markers dimmed
-//!   so the text reads like a document.
-//! - Source: the same colors, but markers stay as visible as the text.
+//! and dark themes both work). Markers stay as visible as the text: Source
+//! shows the markdown as it is. (Live mode draws itself, see `live/`.)
 
 use std::ops::Range;
 use std::rc::Rc;
@@ -19,26 +17,16 @@ use gpui_kit::{
 };
 use kunotes_core::live::{Span, SpanKind, spans};
 
-/// Which mode the styling is for.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum MarkdownStyle {
-    Live,
-    Source,
-}
-
 /// Makes a highlighter for the editor. The editor calls it when it needs one.
-pub fn highlighter_factory(style: MarkdownStyle) -> InputHighlighterFactory {
+pub fn highlighter_factory() -> InputHighlighterFactory {
     Rc::new(move |_language: &str| {
-        let highlighter: Box<dyn InputHighlighter> = Box::new(MarkdownHighlighter {
-            style,
-            spans: Vec::new(),
-        });
+        let highlighter: Box<dyn InputHighlighter> =
+            Box::new(MarkdownHighlighter { spans: Vec::new() });
         Some(highlighter)
     })
 }
 
 struct MarkdownHighlighter {
-    style: MarkdownStyle,
     /// The styled parts of the current text, in order.
     spans: Vec<Span>,
 }
@@ -99,12 +87,6 @@ impl InputHighlighter for MarkdownHighlighter {
 impl MarkdownHighlighter {
     fn style_for(&self, kind: SpanKind, resolver: &dyn HighlightStyleResolver) -> HighlightStyle {
         let theme = |name: &str| resolver.style(name).unwrap_or_default();
-        let live = self.style == MarkdownStyle::Live;
-        // Live mode fades markdown syntax so the text itself stands out.
-        let faded = |style: HighlightStyle| HighlightStyle {
-            fade_out: live.then_some(0.55),
-            ..style
-        };
         let bold = |style: HighlightStyle| HighlightStyle {
             font_weight: Some(FontWeight::BOLD),
             ..style
@@ -115,7 +97,7 @@ impl MarkdownHighlighter {
         };
 
         match kind {
-            SpanKind::Marker => faded(HighlightStyle::default()),
+            SpanKind::Marker => HighlightStyle::default(),
             SpanKind::Heading(_) => bold(theme("title")),
             SpanKind::Bold => bold(theme("emphasis.strong")),
             SpanKind::Italic => italic(theme("emphasis")),
@@ -128,14 +110,10 @@ impl MarkdownHighlighter {
                 }),
                 ..theme("link_text")
             },
-            SpanKind::LinkUrl => faded(theme("link_uri")),
+            SpanKind::LinkUrl => theme("link_uri"),
             SpanKind::ListMarker => theme("keyword"),
-            SpanKind::Quote => italic(if live {
-                faded(theme("comment"))
-            } else {
-                theme("comment")
-            }),
-            SpanKind::Rule => faded(theme("comment")),
+            SpanKind::Quote => italic(theme("comment")),
+            SpanKind::Rule => theme("comment"),
         }
     }
 }
@@ -155,17 +133,14 @@ mod tests {
         }
     }
 
-    fn highlighter(style: MarkdownStyle, text: &str) -> MarkdownHighlighter {
-        MarkdownHighlighter {
-            style,
-            spans: spans(text),
-        }
+    fn highlighter(text: &str) -> MarkdownHighlighter {
+        MarkdownHighlighter { spans: spans(text) }
     }
 
     #[test]
     fn runs_cover_the_whole_range_in_order() {
         let text = "a **b** c `d` e";
-        let runs = highlighter(MarkdownStyle::Live, text).styles(&(0..text.len()), &OneColor);
+        let runs = highlighter(text).styles(&(0..text.len()), &OneColor);
         assert_eq!(runs.first().unwrap().0.start, 0);
         assert_eq!(runs.last().unwrap().0.end, text.len());
         for pair in runs.windows(2) {
@@ -176,30 +151,21 @@ mod tests {
     #[test]
     fn runs_are_clipped_to_the_requested_range() {
         let text = "**bold text**";
-        let runs = highlighter(MarkdownStyle::Live, text).styles(&(4..8), &OneColor);
+        let runs = highlighter(text).styles(&(4..8), &OneColor);
         assert_eq!(
             runs,
-            [(
-                4..8,
-                highlighter(MarkdownStyle::Live, text).style_for(SpanKind::Bold, &OneColor)
-            )]
+            [(4..8, highlighter(text).style_for(SpanKind::Bold, &OneColor))]
         );
     }
 
     #[test]
-    fn markers_fade_in_live_but_not_in_source() {
+    fn heading_text_is_bold_and_markers_are_not_faded() {
         let text = "# Title";
-        let live = highlighter(MarkdownStyle::Live, text).styles(&(0..text.len()), &OneColor);
-        let source = highlighter(MarkdownStyle::Source, text).styles(&(0..text.len()), &OneColor);
+        let runs = highlighter(text).styles(&(0..text.len()), &OneColor);
         assert!(
-            live[0].1.fade_out.is_some(),
-            "the '# ' marker is dimmed in Live"
+            runs[0].1.fade_out.is_none(),
+            "Source shows markers as they are"
         );
-        assert!(source[0].1.fade_out.is_none(), "but not in Source");
-        assert_eq!(
-            live[1].1.font_weight,
-            Some(FontWeight::BOLD),
-            "heading text is bold"
-        );
+        assert_eq!(runs[1].1.font_weight, Some(FontWeight::BOLD));
     }
 }

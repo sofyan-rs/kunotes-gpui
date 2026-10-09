@@ -131,3 +131,13 @@ cx.spawn(async move |this, cx| if let Ok(Ok(Some(paths))) = rx.await { .. }).det
 | Workspace builds (`cargo build --release`) | ✅ | ✅ CI | ✅ CI (fedora:latest container) |
 | Hello window opens, no errors in log | ✅ | 🧪 needs a real machine | 🧪 needs a real machine (Vulkan) |
 | `cargo test`, `clippy -D warnings` | ✅ | ✅ CI | ✅ CI |
+
+## Live editor (Phase 10) findings
+
+- **Reusing gpui-kit's key bindings:** giving a custom element the key context `"Input"` makes all of gpui-kit's text-input bindings dispatch to it (`gpui_kit::base::input::{Backspace, MoveLeft, Undo, Copy, Enter { secondary, shift }, ...}` and `gpui_kit::base::actions::{SelectLeft, SelectUp, ...}`). The element only needs `.on_action` handlers; per-OS keys come for free.
+- **Height depends on width:** use `window.request_measured_layout(style, |known, available, window, cx| size)`. Share the shaped result with `prepaint` through an `Rc<RefCell<..>>` and reshape only if the final width differs.
+- **Shaping:** `window.text_system().shape_text(text, font_size, &runs, Some(wrap_width), None)` returns one `WrappedLine` per `\n`-separated line (an empty string still gives one). `closest_index_for_position` returns `Result<usize, usize>`; both arms are usable indices. `position_for_index` gives the caret's top-left.
+- **Backgrounds:** `WrappedLine::paint` doesn't draw `TextRun::background_color`; call `paint_background` first.
+- **Check marks:** `PathBuilder::stroke(width)` + `move_to`/`line_to` + `build()` → `window.paint_path(path, color)`.
+- **Clickable things in the markdown preview:** `TextView::markdown_block_parser` (gets `markdown_ast::Node` + source offsets) and `markdown_block_renderer(name, Fn + Send + Sync)`. Passing new closures every frame doesn't re-parse (gpui-kit compares the parser configuration). `window.dispatch_action` from a preview click doesn't reach the pane (nothing focused); capture a `WeakEntity` (it's `Send + Sync`) instead.
+- **Test clicks** on elements with `("name", n)` ids work with `.test_support()` after `.id(..)`.

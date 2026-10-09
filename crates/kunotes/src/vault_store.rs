@@ -142,7 +142,10 @@ impl VaultStore {
 
     /// Closes the vault and forgets it.
     pub fn close_vault(&mut self, cx: &mut Context<Self>) {
-        *self = VaultStore::default();
+        *self = VaultStore {
+            live_sync_disabled: self.live_sync_disabled,
+            ..VaultStore::default()
+        };
         SettingsStore::update(cx, |settings| settings.last_vault = None);
         cx.emit(VaultEvent::TreeChanged);
         cx.notify();

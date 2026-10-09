@@ -204,7 +204,7 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done
 
 - [x] Live segment first in the view-mode switch + `secondary-1`, View menu, cycle order Live → Source → Split → Preview. Default `view_mode` is Live for new settings files.
 - [x] `kunotes-core/src/live.rs`: markdown parts with byte ranges (9 unit tests).
-- [x] `ui/editor/markdown_style.rs`: one `InputHighlighter` for Live and Source (theme colors; Live fades markers, bolds headings, uses the UI font). 3 unit tests.
+- [x] `ui/editor/markdown_style.rs`: one `InputHighlighter` for Live and Source (theme colors; Live fades markers, bolds headings, uses the UI font). 3 unit tests. (Since Phase 10 it styles Source/Split only.)
 - [x] Cursor, selection, and buffer carry over when switching Live ⇄ Source (same `EditorState`).
 - [x] Formatter bar and editor shortcuts work in Live.
 - [x] Light and dark themes via the theme's syntax colors.
@@ -213,18 +213,20 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done
 
 ## Phase 10: Live mode stage B, custom live editor (v2)
 
-**Goal:** Obsidian-style live preview (§6.9 stage B), replacing stage A as the Live implementation.
+**Goal:** Obsidian-style live preview (§6.9), replacing stage A as the Live implementation.
 
-- [ ] `kunotes-core::live`: block parsing with byte ranges (pulldown-cmark offset iter), marker ranges per block/inline span, "revealed" ranges for a cursor/selection, cursor movement over hidden ranges, list continuation. Unit tests for each.
-- [ ] `ui/editor/live/buffer.rs`: `ropey` buffer, undo/redo with grouping, incremental re-parse of edited blocks.
-- [ ] `layout.rs`: per-block shaped lines with styled runs, heading sizes, soft wrap, visible-blocks-only layout.
-- [ ] `element.rs`: paint text, cursor, selection, checkbox, hr, code-block background, quote bar.
-- [ ] `input.rs`: `EntityInputHandler` (typing, IME marked text), mouse (click, drag, double/triple click, shift-click).
-- [ ] `actions.rs`: movement (char, word, line, visual up/down, home/end, page), delete, clipboard, select all, Enter list continuation, Tab/Shift-Tab list indent.
-- [ ] Checkbox click toggles `[ ]` ⇄ `[x]` as one undoable edit. Cmd/Ctrl+click opens links.
-- [ ] Formatter bar + shortcuts reuse `kunotes_core::format`.
-- [ ] Performance: typing stays smooth on a ~1 MB note.
-- [ ] Setting to fall back to stage A.
+- [x] `kunotes-core::live_view`: lines with spans, per-line drawn text with markers hidden unless revealed, line kinds, drawn ⇄ file position mapping. 9 unit tests.
+- [x] `kunotes-core::live_buffer`: text + selection, grapheme and word movement, select word/line, delete (char, word, to line start), Enter list continuation, task toggle, undo/redo with typing grouped. 15 unit tests (emoji, CJK).
+- [x] `ui/editor/live/layout.rs` + `style.rs`: per-line shaped text with styled runs, heading sizes, soft wrap, hit-testing, Up/Down at a kept x, selection rectangles. Styled to match the Preview.
+- [x] `element.rs`: paint text, caret, selection, checkbox, rule, code background, quote bar, inline-code background, placeholder; scroll-to-caret.
+- [x] `input.rs`: `EntityInputHandler` (typing, IME marked text, UTF-16 ⇄ UTF-8). Mouse in `mod.rs`: click, drag, double/triple click, shift-click.
+- [x] `keys.rs`: gpui-kit's `Input` key context, so the usual per-OS shortcuts work: char/word/line movement, Up/Down, start/end, delete, clipboard, select all, undo/redo, Enter, Tab.
+- [x] Checkbox click toggles `[ ]` ⇄ `[x]` as one undoable edit, in Live and in Preview.
+- [x] Formatter bar reuses `kunotes_core::format` on the Live buffer.
+- [x] Live and Source/Split hand the text over on mode switch; file bytes unchanged (UI test).
+- [x] Same content padding in Live, Source and Preview (measured on screenshots).
+- [ ] Page up/down, Shift-Tab outdent, Cmd/Ctrl+click opens links.
+- [ ] Performance: only lay out visible lines; check typing on a ~1 MB note.
 - [ ] Manual IME test: Japanese/Chinese input on macOS, Windows (MS IME), and Fedora (ibus + fcitx5, Wayland).
 
 **Done when:** the Live checklist rows pass on all three OSes and a full writing session in Live on `Example.md` produces a byte-identical file to doing the same edits in Source.

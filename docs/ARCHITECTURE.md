@@ -30,8 +30,8 @@ Scope: **open a folder, browse it, edit markdown.** There are no wikilinks, back
 | UI framework | `gpui-kit = "0.7.1"` | Re-exports GPUI. Do not add `gpui` separately. |
 | Toolchain | Rust ≥ 1.92, edition 2024 | 1.92 is required by gpui-kit's locked dependency graph. Windows needs the MSVC toolchain. |
 | Markdown preview | `gpui_kit::component::text::TextView::markdown` | Renders task lists; style hooks via `TextViewStyle` (§6.5). |
-| Editor (Source mode, Live stage A) | gpui-kit `EditorState` (`.language("markdown")`, soft wrap, no line numbers) | Live stage A uses the unstyled `gpui_base::input::Editor` with its own highlight styles (§6.9). |
-| Editor (Live stage B) | Custom `LiveEditor` element on GPUI primitives (`EntityInputHandler`, `StyledText`/text layout) + `ropey` buffer + `pulldown-cmark` offsets | See §6.9. |
+| Editor (Source, Split) | gpui-kit `EditorState` (`.language("markdown")`, soft wrap, no line numbers) | Styled by our own `InputHighlighter` (`ui/editor/markdown_style.rs`). |
+| Editor (Live) | Custom `LiveEditor` element on GPUI primitives (`EntityInputHandler`, `shape_text` layout) over a plain `String` buffer (`kunotes_core::live_buffer`) | See §6.9. |
 | File watching | `notify` + `notify-debouncer-full` | FSEvents on macOS, ReadDirectoryChangesW on Windows, inotify on Linux. |
 | Trash | `trash` crate | macOS Trash, Windows Recycle Bin, freedesktop trash on Linux. |
 | Reveal in file manager | `opener` crate (`reveal` feature) | Finder, Explorer, or the default Linux file manager. |
@@ -71,7 +71,9 @@ kunotes-gpui/
 │   │   │   ├── cursor.rs      # byte offset -> (line, col), character count
 │   │   │   ├── line_ending.rs # keep \n or \r\n unchanged across load/save
 │   │   │   ├── settings.rs    # Settings + load/save JSON
-│   │   │   └── live.rs        # Live-mode logic (Phase 10; may become live/ folder)
+│   │   │   ├── live.rs        # markdown parts (spans) for Live and Source styling
+│   │   │   ├── live_view.rs   # what each Live line draws; drawn ⇄ file positions
+│   │   │   └── live_buffer.rs # Live editor text, selection, undo, list continuation
 │   │   └── tests/             # integration tests that touch the real filesystem
 │   │       ├── fs_ops.rs
 │   │       ├── scan.rs
@@ -102,10 +104,11 @@ kunotes-gpui/
 │               │   ├── mod.rs         # EditorPane: load, autosave, view modes, formatting
 │               │   ├── editor_tests.rs # headless UI tests (autosave, rename, format)
 │               │   ├── formatter_bar.rs
-│               │   ├── preview.rs
+│               │   ├── markdown_style.rs # Source/Split colors (InputHighlighter)
+│               │   ├── preview.rs     # rendered markdown, clickable checkboxes
 │               │   ├── status_bar.rs
 │               │   ├── view_mode_switch.rs
-│               │   └── live/          # custom Live editor (Phase 10)
+│               │   └── live/          # custom Live editor: mod, keys, input, layout, style, element
 │               ├── editor_area/       # tabs: EditorArea (mod.rs), tab_bar.rs, tests
 │               ├── quick_switcher.rs
 │               ├── quick_switcher_tests.rs
@@ -361,7 +364,8 @@ With no selection, transforms apply at the cursor position. They fall back to th
 
 ### 6.5 Preview (`ui/editor/preview.rs`)
 
-- `TextView::markdown("preview", content).scrollable(true)` with selectable text (on by default) and ~25px padding.
+- `TextView::markdown("preview", content).scrollable(true)` with selectable text (on by default) and the same 24px side padding as Live and Source.
+- **Clickable task checkboxes:** lists with tasks are parsed into a custom block and drawn by us; a click flips `[ ]` ⇄ `[x]` in the note (§6.9).
 - It must render: headings H1–H6, paragraphs, bold, italic, inline code (accent color), links (accent color with underline, opened in the browser via `cx.open_url`), fenced code blocks (muted rounded background, monospace), ordered and unordered lists with nesting, task lists with checked and unchecked boxes, blockquotes (accent left bar, muted text), and thematic breaks.
 - **Throttle:** in Split mode, update the preview at most every ~150ms while typing, so large notes don't re-parse on every keystroke.
 - **Styling:** `TextViewStyle` sets heading sizes, code-block background, and inline-code style. Blockquote styling is fixed by the component (muted text, left border in the border color) and is accepted as is.
@@ -401,58 +405,32 @@ With no selection, transforms apply at the cursor position. They fall back to th
 
 Live mode is a "realtime formatter", in the style of Obsidian Live Preview or Typora. It is **not** a rich-text WYSIWYG: there is no separate document model and no HTML round-trip. The raw markdown string stays the single source of truth, and Live mode is only a different way to draw and edit it. Saving writes exactly the characters in the buffer.
 
-It ships in two stages.
+It shipped in two stages. Stage A (a styled gpui-kit editor with markers faded but visible) was replaced by stage B, a custom editor, because the gpui-kit editor can't hide characters or vary font sizes per line.
 
-#### Stage A: styled source (done)
+**Who owns the text.** `EditorPane` holds two editors: `LiveEditor` (Live) and gpui-kit's `EditorState` (Source and Split). Only one is in charge at a time (`live_active`). When the mode switches between them, `sync_active_editor` hands the text and cursor over (`LiveEditor::set_text` / `EditorState::replace_all`, only if the text differs). Preview keeps whichever was in charge. Saving, the preview, the status bar and the formatter bar all read from the editor in charge (`EditorPane::text`). The file bytes never change from switching (tested).
 
-- One highlighter drives **both** Live and Source: `ui/editor/markdown_style.rs` implements gpui-base's `InputHighlighter` trait and is installed with `EditorState::set_highlighter_factory`. It replaces the built-in tree-sitter markdown highlighter, which can't be restored once replaced (its factory is crate-private).
-- The parts of the note come from `kunotes_core::live::spans`: a single-pass, line-by-line scan (headings, bold/italic, inline code, links, list markers and task boxes, quotes, fenced code, rules, and the marker characters around them). It's unit-tested, including multi-byte text and CRLF.
-- Colors come from the theme's syntax names (`title`, `emphasis.strong`, `emphasis`, `text.literal`, `link_text`, `link_uri`, `keyword`, `comment`), so light and dark both work. Font weight, italic, and underline are added on top.
-- **Live:** markers fade (`fade_out`), heading text is bold, and the editor uses the UI font at 16px. **Source:** same colors, markers fully visible, monospace at 15px.
-- Switching modes calls `set_highlighter_factory` on the same `EditorState` (via an `observe_global::<SettingsStore>` in `EditorPane`), so the buffer and the file bytes never change (tested).
-- Limit: every line keeps the same font size (GPUI highlight styles have no size), so headings are bold and colored, not larger. Stage B lifts this.
+**Pure logic (`kunotes-core`, unit-tested):**
+- `live.rs`: `spans(text)`, a single-pass, line-by-line scan into styled parts (headings, bold/italic, inline code, links, list markers and task boxes, quotes, fenced code, rules, and the marker characters around them). Also drives Source-mode colors.
+- `live_view.rs`: `lines(text)` splits into lines with their spans; `line_view(line, spans, revealed)` decides what one line draws (`LineKind`: heading, task, bullet, quote, code, rule, ...) and maps cursor positions between the drawn text and the file (`to_display` / `to_source`).
+- `live_buffer.rs`: `LiveBuffer`, the text + selection: grapheme-aware movement, word movement, select word/line, delete, Enter with list continuation (`- `, `1. ` → `2. `, `- [ ] `; Enter on an empty item ends the list), `toggle_task`, undo/redo with typing grouped. `task_toggle(text, offset)` is shared with the Preview's checkboxes.
 
-#### Stage B: custom live editor (PLAN Phase 10)
+**App (`ui/editor/live/`):**
+- `mod.rs`: the `LiveEditor` entity (buffer, focus, IME marked range, last layout, scroll) and the mouse: click, shift-click, drag-select, double-click word, triple-click line, checkbox click.
+- `keys.rs`: keyboard actions. The root uses gpui-kit's **`Input` key context**, so its bindings (arrows, Home/End, word jumps, delete-word, undo/redo, clipboard, select all, Enter, Tab) work with each OS's usual keys; we only handle the actions.
+- `input.rs`: `EntityInputHandler` (typing, IME composition, emoji picker), converting the OS's UTF-16 ranges to UTF-8 byte offsets.
+- `layout.rs`: one shaped `WrappedLine` per line (`text_system().shape_text` with a wrap width). The element uses a *measured* layout (`request_measured_layout`), because the height depends on the width. Also hit-testing (`offset_for_point`), caret position, Up/Down at a kept x, selection rectangles.
+- `style.rs`: fonts and colors from the theme.
+- `element.rs`: paints code backgrounds, quote bars, rules, checkboxes, the selection, text backgrounds (inline code), text, placeholder and caret; registers the input handler; scrolls the caret into view.
 
-A purpose-built editor element, because the gpui-kit editor can't hide characters or vary line heights.
+**Rendering rules:**
+- **Reveal on cursor:** every line the cursor or selection touches shows its raw markers (dimmed). Other lines hide them: `## Title` draws a large "Title", `**x**` a bold "x", `[label](url)` a link "label", `- item` a "• item", `- [x] done` a checkbox and "done".
+- **Looks like Preview:** heading sizes and weights (28/21/17.5/16px, bold/semibold), foreground heading color, inline code on the accent background, links in the primary color, 14px square checkboxes, muted quotes with a 3px bar, and empty lines as tall as Preview's paragraph gap. Live, Source and Preview text all start 24px from the editor's left edge.
+- **Code blocks:** monospace with a background; the fences stay visible.
+- Images and tables show as styled source.
 
-```
-ropey::Rope (buffer, byte offsets)
-   │  on change: incremental re-parse of affected blocks
-   ▼
-pulldown-cmark (offset iter) ──► Vec<Block { range, kind, inline_spans }>
-   │
-   ▼
-layout: per block → shaped lines (StyledText / text_system().shape_line) with runs
-        markers hidden unless the block or inline span contains the cursor/selection
-   │
-   ▼
-paint: text, cursor, selection, widgets (checkbox, hr, code-block background, quote bar)
-   ▲
-   │  EntityInputHandler (typing, IME composition, marked text; UTF-16 ranges ⇄ rope byte offsets) + key actions
-```
+**Preview checkboxes.** `preview.rs` installs a markdown block parser that turns lists containing tasks into a custom block, drawn with our own clickable checkboxes (the item text is rendered by a nested `TextView`). A click calls `EditorPane::toggle_task(offset)` through a `WeakEntity` captured by the renderer (actions don't reach the pane in Preview, since nothing there has focus).
 
-Rendering rules:
-- **Reveal on cursor:** the block containing the cursor (and any block the selection touches) shows its raw markers, still styled. Other blocks hide markers: `## Title` shows as a large "Title", `**x**` as bold "x", `[label](url)` as a link "label".
-- **Headings:** sizes H1 > H2 > … > H6 with matching line heights.
-- **Task items:** `- [ ]` / `- [x]` render as a checkbox. Clicking toggles the character in the buffer (one undoable edit).
-- **Code blocks:** monospace with a muted background. The fences show only when the cursor is inside. Optional syntax highlight later.
-- **Blockquote:** accent left bar. **Thematic break:** a horizontal rule. **Lists:** bullets and numbers drawn as markers, nesting by indent.
-- **Links:** Cmd/Ctrl+click opens the URL. A plain click places the cursor.
-- Images and tables are out of scope for v2 and show as styled source.
-
-Editing requirements (the hard part; each needs tests or a manual check on all three OSes):
-- Cursor movement over hidden markers (left/right, up/down keeping the visual column, home/end, word jumps, page up/down).
-- Mouse: click, drag-select, double-click word, triple-click line, shift-click extend.
-- IME composition (CJK input) through `EntityInputHandler` marked-text APIs.
-- Undo/redo with grouping, clipboard copy/cut/paste as plain markdown, select all.
-- Soft wrap, vertical scrolling, scroll-to-cursor, and only laying out visible blocks for large notes.
-- Smart list continuation: Enter on a list item continues the list, Enter on an empty item ends it.
-- The formatter bar and editor shortcuts use the same `kunotes_core::format` transforms as Source mode.
-
-Code layout: `ui/editor/live/{mod.rs, buffer.rs, layout.rs, element.rs, input.rs, actions.rs}`. Pure parts (block parsing, marker ranges, cursor movement over hidden ranges, list continuation) live in `kunotes-core::live` with unit tests.
-
-Fallback: if stage B can't hit the editing requirements on every OS, Live keeps stage A and stage B continues behind a setting.
+Not done yet: page up/down, Cmd/Ctrl+click on links, laying out only visible lines for very large notes, and a manual IME check on Windows and Fedora.
 
 ---
 

@@ -42,12 +42,12 @@ Rust ≥ 1.92 (required by gpui-kit). Windows needs the MSVC toolchain. Fedora n
 
 ## Layout
 
-- `crates/kunotes-core/`: **pure logic, no gpui.** Covers scan (`node.rs`), file ops and `atomic_write` (`fs_ops.rs`), filename validation (`names.rs`), relative path and breadcrumb (`paths.rs`), formatter transforms (`format.rs`), line/col and char count (`cursor.rs`), `\n`/`\r\n` preservation (`line_ending.rs`), file flatten/filter and tree `visible_rows` (`search.rs`), `Settings` (`settings.rs`), and Live-mode logic (`live.rs`: blocks, marker ranges, cursor movement over hidden ranges). Anything that can be written without gpui goes here, with tests.
+- `crates/kunotes-core/`: **pure logic, no gpui.** Covers scan (`node.rs`), file ops and `atomic_write` (`fs_ops.rs`), filename validation (`names.rs`), relative path and breadcrumb (`paths.rs`), formatter transforms (`format.rs`), line/col and char count (`cursor.rs`), `\n`/`\r\n` preservation (`line_ending.rs`), file flatten/filter and tree `visible_rows` (`search.rs`), `Settings` (`settings.rs`), and Live-mode logic (`live.rs` spans, `live_view.rs` per-line drawing and position mapping, `live_buffer.rs` text/selection/undo). Anything that can be written without gpui goes here, with tests.
 - `crates/kunotes/`: the GPUI app.
   - `vault_store.rs`: the `VaultStore` entity, the single source of truth, which emits `VaultEvent`.
   - `watcher.rs`: `notify` events go through a channel to `refresh`.
   - `platform.rs`: the **only** place for `#[cfg(target_os)]` and OS wording.
-  - `ui/`: views grouped by feature: `workspace.rs`, `title_bar.rs`, `sidebar/` (`mod.rs`, `file_tree.rs`, `inline_edit.rs`, `keyboard.rs`, `context_menu.rs`), `editor/` (`mod.rs` = EditorPane, `markdown_style.rs` = Live/Source styling, `view_mode_switch.rs`, `formatter_bar.rs`, `preview.rs`, `status_bar.rs`, `live/` = Live stage B), `editor_area/` (tabs: `mod.rs` = EditorArea, `tab_bar.rs`), `quick_switcher.rs`, `dialogs.rs`, `empty_state.rs`. Tab rules are pure in `kunotes-core/src/tabs.rs`.
+  - `ui/`: views grouped by feature: `workspace.rs`, `title_bar.rs`, `sidebar/` (`mod.rs`, `file_tree.rs`, `inline_edit.rs`, `keyboard.rs`, `context_menu.rs`), `editor/` (`mod.rs` = EditorPane, `markdown_style.rs` = Source styling, `view_mode_switch.rs`, `formatter_bar.rs`, `preview.rs`, `status_bar.rs`, `live/` = custom Live editor: `mod.rs`, `keys.rs`, `input.rs`, `layout.rs`, `style.rs`, `element.rs`), `editor_area/` (tabs: `mod.rs` = EditorArea, `tab_bar.rs`), `quick_switcher.rs`, `dialogs.rs`, `empty_state.rs`. Tab rules are pure in `kunotes-core/src/tabs.rs`.
 
 Structure rules (ARCHITECTURE §3): the codebase must stay readable for engineers new to Rust.
 - Start with one file; make a folder (with `mod.rs`) only when a module needs several files.
@@ -60,7 +60,7 @@ Structure rules (ARCHITECTURE §3): the codebase must stay readable for engineer
 
 ## Editor modes
 
-Live (realtime formatter, the default), Source (highlighted raw markdown), Split, Preview. All modes share **one markdown string buffer**. Live is not rich-text WYSIWYG: never introduce a separate document model or an HTML round-trip, and switching modes must never change file bytes. Live ships in two stages: A = styled gpui-kit editor (Phase 9), B = custom `LiveEditor` with markers hidden off-cursor (Phase 10). See ARCHITECTURE §6.3 and §6.9.
+Live (realtime formatter, the default), Source (highlighted raw markdown), Split, Preview. All modes share **one markdown string buffer**. Live is not rich-text WYSIWYG: never introduce a separate document model or an HTML round-trip, and switching modes must never change file bytes. Live uses the custom `LiveEditor` (markers hidden except on the cursor's line, styled like Preview); Source/Split use gpui-kit's `EditorState`. `EditorPane` hands the text over on mode switch. See ARCHITECTURE §6.3 and §6.9.
 
 ## Rules
 

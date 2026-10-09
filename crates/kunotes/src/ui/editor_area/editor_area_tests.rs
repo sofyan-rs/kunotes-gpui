@@ -50,15 +50,12 @@ fn keep_open(s: &Setup, cx: &mut TestAppContext, relative: &str) {
 }
 
 fn type_in_active_editor(s: &Setup, cx: &mut TestAppContext, text: &str) {
-    let state = s.workspace.read_with(cx, |workspace, cx| {
-        workspace.editor(cx).unwrap().read(cx).editor_state()
-    });
+    let pane = s
+        .workspace
+        .read_with(cx, |workspace, cx| workspace.editor(cx).unwrap());
     cx.update_window(s.window, |_, window, cx| {
-        state.update(cx, |state, cx| {
-            let end = state.value().len();
-            state.set_selected_range(end..end, cx);
-            state.focus(window, cx);
-        });
+        let end = pane.read(cx).text(cx).len();
+        pane.update(cx, |pane, cx| pane.select_and_focus(end..end, window, cx));
     })
     .unwrap();
     in_window(s, cx, |window, cx| window.input(text, cx));

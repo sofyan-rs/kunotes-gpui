@@ -41,13 +41,14 @@ fn a_note_deleted_outside_closes_the_editor_without_writing_it_back(cx: &mut Tes
     cx.run_until_parked();
 
     // Type something, so there are unsaved changes.
-    let state = s.workspace.read_with(cx, |workspace, cx| {
-        workspace.editor(cx).unwrap().read(cx).editor_state()
-    });
+    let pane = s
+        .workspace
+        .read_with(cx, |workspace, cx| workspace.editor(cx).unwrap());
     cx.update_window(s.window, |_, window, cx| {
-        state.update(cx, |state, cx| state.focus(window, cx));
+        pane.update(cx, |pane, cx| pane.focus(window, cx))
     })
     .unwrap();
+    drop(pane); // holding the pane would keep its autosave alive
     in_window(&s, cx, |window, cx| window.input("typing", cx));
 
     fs::remove_file(&welcome).unwrap(); // deleted outside the app

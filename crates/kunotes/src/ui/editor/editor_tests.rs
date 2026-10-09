@@ -5,12 +5,12 @@
 use std::fs;
 use std::time::Duration;
 
-use gpui_kit::component::input::EditorState;
 use gpui_kit::test::TestWindowExt as _;
 use gpui_kit::{AppContext as _, Entity, TestAppContext};
 use kunotes_core::settings::ViewMode;
 
 use crate::settings_store::SettingsStore;
+use crate::ui::editor::EditorPane;
 use crate::ui::test_helpers::{Setup, in_window, setup};
 
 /// Selects the note at `relative` in the vault, which opens it in the editor.
@@ -21,32 +21,30 @@ fn open_note(s: &Setup, cx: &mut TestAppContext, relative: &str) {
     cx.run_until_parked();
 }
 
-/// The open note's editor state (panics if no note is open).
-fn editor(s: &Setup, cx: &mut TestAppContext) -> Entity<EditorState> {
+/// The open note's editor pane (panics if no note is open).
+fn pane(s: &Setup, cx: &mut TestAppContext) -> Entity<EditorPane> {
     s.workspace.read_with(cx, |workspace, cx| {
-        workspace
-            .editor(cx)
-            .expect("a note should be open")
-            .read(cx)
-            .editor_state()
+        workspace.editor(cx).expect("a note should be open")
     })
 }
 
 fn editor_text(s: &Setup, cx: &mut TestAppContext) -> String {
-    editor(s, cx).read_with(cx, |state, _| state.value().to_string())
+    pane(s, cx).read_with(cx, |pane, cx| pane.text(cx).to_string())
+}
+
+/// Selects `range` in the open note and focuses its editor.
+fn select(s: &Setup, cx: &mut TestAppContext, range: std::ops::Range<usize>) {
+    let pane = pane(s, cx);
+    cx.update_window(s.window, |_, window, cx| {
+        pane.update(cx, |pane, cx| pane.select_and_focus(range, window, cx));
+    })
+    .unwrap();
 }
 
 /// Focuses the editor and types `text` at the end of the note.
 fn type_at_end(s: &Setup, cx: &mut TestAppContext, text: &str) {
-    let state = editor(s, cx);
-    cx.update_window(s.window, |_, window, cx| {
-        state.update(cx, |state, cx| {
-            let end = state.value().len();
-            state.set_selected_range(end..end, cx);
-            state.focus(window, cx);
-        });
-    })
-    .unwrap();
+    let end = editor_text(s, cx).len();
+    select(s, cx, end..end);
     in_window(s, cx, |window, cx| window.input(text, cx));
 }
 
@@ -135,13 +133,12 @@ fn a_deleted_note_is_not_written_back(cx: &mut TestAppContext) {
 fn bold_button_wraps_the_selection(cx: &mut TestAppContext) {
     let s = setup(cx);
     open_note(&s, cx, "Welcome.md");
-    let state = editor(&s, cx);
-    state.update(cx, |state, cx| state.set_selected_range(2..9, cx)); // "Welcome"
+    select(&s, cx, 2..9); // "Welcome"
 
     in_window(&s, cx, |window, cx| window.click("format-bold", cx));
 
     assert_eq!(editor_text(&s, cx), "# **Welcome**\n");
-    let selected = state.read_with(cx, |state, _| state.selected_value().to_string());
+    let selected = pane(&s, cx).read_with(cx, |pane, cx| pane.selected_text(cx));
     assert_eq!(selected, "Welcome", "the original text stays selected");
 }
 
@@ -242,4 +239,43 @@ fn clicking_a_view_mode_segment_switches_mode(cx: &mut TestAppContext) {
     assert_eq!(mode(cx), ViewMode::Preview);
     in_window(&s, cx, |window, cx| window.click("Source", cx));
     assert_eq!(mode(cx), ViewMode::Source);
+}
+
+#[gpui_kit::test]
+fn live_enter_continues_a_list_and_backspace_and_undo_work(cx: &mut TestAppContext) {
+    let s = setup(cx);
+    let note = s.path("List.md");
+    fs::write(&note, "- one").unwrap();
+    open_note(&s, cx, "List.md");
+
+    type_at_end(&s, cx, "");
+    in_window(&s, cx, |window, cx| window.press("enter", cx));
+    in_window(&s, cx, |window, cx| window.input("two", cx));
+    assert_eq!(editor_text(&s, cx), "- one\n- two");
+
+    in_window(&s, cx, |window, cx| window.press("backspace", cx));
+    assert_eq!(editor_text(&s, cx), "- one\n- tw");
+
+    in_window(&s, cx, |window, cx| window.press("secondary-z", cx));
+    assert_eq!(editor_text(&s, cx), "- one\n- two");
+}
+
+#[gpui_kit::test]
+fn clicking_a_task_in_the_preview_ticks_it(cx: &mut TestAppContext) {
+    let s = setup(cx);
+    let note = s.path("Tasks.md");
+    fs::write(&note, "# Todo\n- [ ] first\n- [x] second\n").unwrap();
+    open_note(&s, cx, "Tasks.md");
+    in_window(&s, cx, |window, cx| window.press("secondary-4", cx)); // Preview
+
+    // Each checkbox is named after where its task starts in the note.
+    in_window(&s, cx, |window, cx| {
+        window.click(("task-checkbox", 7usize), cx)
+    });
+    assert_eq!(editor_text(&s, cx), "# Todo\n- [x] first\n- [x] second\n");
+    wait(cx, 600);
+    assert_eq!(
+        fs::read_to_string(&note).unwrap(),
+        "# Todo\n- [x] first\n- [x] second\n"
+    );
 }

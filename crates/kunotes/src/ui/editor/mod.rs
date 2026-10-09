@@ -1,5 +1,9 @@
 //! `EditorPane`: one open note. Loads it, shows it in the current view mode
-//! (Source / Split / Preview), and autosaves it.
+//! (Live / Source / Split / Preview), and autosaves it.
+//!
+//! Live mode uses our own editor (`live/`); Source and Split use gpui-kit's
+//! code editor. Only one of them is in charge of the text at a time: when the
+//! mode switches, the text (and cursor) is handed over to the other.
 //!
 //! A new pane is created for every note that gets opened, so nothing from the
 //! previous note (cursor, unsaved state) can leak into the next one.
@@ -7,9 +11,8 @@
 #[cfg(test)]
 mod editor_tests;
 mod formatter_bar;
+mod live;
 mod markdown_style;
-
-use markdown_style::{MarkdownStyle, highlighter_factory};
 mod preview;
 mod status_bar;
 mod view_mode_switch;
@@ -24,15 +27,18 @@ use gpui_kit::component::input::{Editor, EditorState, InputEvent};
 use gpui_kit::component::resizable::{h_resizable, resizable_panel};
 use gpui_kit::component::{ActiveTheme as _, Icon, Sizable as _, h_flex, v_flex};
 use gpui_kit::{
-    AnyElement, App, AppContext as _, Context, Entity, EventEmitter, InteractiveElement as _,
-    IntoElement, ParentElement as _, Render, SharedString, Styled as _, Subscription, Task, Window,
-    div, prelude::FluentBuilder as _, px,
+    AnyElement, App, AppContext as _, Context, Entity, EventEmitter, Focusable as _,
+    InteractiveElement as _, IntoElement, ParentElement as _, Render, SharedString, Styled as _,
+    Subscription, Task, Window, div, prelude::FluentBuilder as _, px,
 };
 use kunotes_core::format::Edit;
 use kunotes_core::fs_ops::atomic_write;
 use kunotes_core::line_ending::{self, LineEnding};
 use kunotes_core::settings::ViewMode;
-use kunotes_core::{cursor, paths};
+use kunotes_core::{cursor, live_buffer, paths};
+
+use live::{LiveEditor, LiveEditorEvent};
+use markdown_style::highlighter_factory;
 
 use crate::actions::{EDITOR, FormatBold, FormatItalic, FormatLink, SaveNow};
 use crate::settings_store::SettingsStore;
@@ -52,15 +58,19 @@ pub enum EditorEvent {
 pub struct EditorPane {
     path: PathBuf,
     vault_root: PathBuf,
+    /// The Source/Split editor.
     editor: Entity<EditorState>,
+    /// The Live editor.
+    live: Entity<LiveEditor>,
+    /// True while the Live editor is in charge of the text (Live mode, or
+    /// Preview entered from Live).
+    live_active: bool,
     /// The file's original line endings, restored when saving.
     line_ending: LineEnding,
     /// False if the file wasn't valid UTF-8: saving would damage it, so we never write.
     can_save: bool,
     /// True when the editor has changes that aren't on disk yet.
     dirty: bool,
-    /// How the text is styled right now (Live or Source).
-    style: MarkdownStyle,
     save_task: Option<Task<()>>,
     /// The text the preview shows (updated a little behind the editor while typing).
     preview_text: SharedString,
@@ -117,7 +127,8 @@ impl EditorPane {
             can_save,
         } = note;
 
-        let style = markdown_style_for(SettingsStore::get(cx).view_mode, MarkdownStyle::Live);
+        let live_active = uses_live(SettingsStore::get(cx).view_mode, true);
+        let live = cx.new(|cx| LiveEditor::new(&text, !can_save, cx));
         let editor = cx.new(|cx| {
             let mut state = EditorState::new(window, cx)
                 .language("markdown")
@@ -127,7 +138,7 @@ impl EditorPane {
                 .placeholder("Start writing…")
                 .default_value(text.clone());
             // Our own markdown styling (see `markdown_style.rs`) instead of the built-in one.
-            state.set_highlighter_factory(highlighter_factory(style), cx);
+            state.set_highlighter_factory(highlighter_factory(), cx);
             state
         });
 
@@ -137,10 +148,16 @@ impl EditorPane {
                     pane.on_text_changed(cx);
                 }
             }),
+            cx.subscribe(&live, |pane, _, event: &LiveEditorEvent, cx| match event {
+                LiveEditorEvent::Changed => pane.on_text_changed(cx),
+            }),
             // Cursor moves don't send an event, but they do notify; redraw the status bar.
             cx.observe(&editor, |_, _, cx| cx.notify()),
-            // Switching between Live and Source changes how the text is styled.
-            cx.observe_global::<SettingsStore>(|pane, cx| pane.sync_markdown_style(cx)),
+            cx.observe(&live, |_, _, cx| cx.notify()),
+            // Switching between Live and Source hands the text to the other editor.
+            cx.observe_global_in::<SettingsStore>(window, |pane, window, cx| {
+                pane.sync_active_editor(window, cx)
+            }),
         ];
 
         EditorPane {
@@ -149,21 +166,60 @@ impl EditorPane {
             line_ending,
             can_save,
             dirty: false,
-            style,
+            live_active,
             save_task: None,
             preview_text: text.clone().into(),
             refresh_task: None,
             refresh_again: false,
             char_count: cursor::char_count(&text),
             editor,
+            live,
             _subscriptions: subscriptions,
         }
     }
 
-    /// The text editor's state. For tests.
+    /// The note's current text (from whichever editor is in charge).
+    pub fn text(&self, cx: &App) -> SharedString {
+        if self.live_active {
+            self.live.read(cx).text().to_string().into()
+        } else {
+            self.editor.read(cx).value()
+        }
+    }
+
+    /// The selection in the editor that's in charge.
+    fn selection(&self, cx: &App) -> Range<usize> {
+        if self.live_active {
+            self.live.read(cx).selection()
+        } else {
+            self.editor.read(cx).selected_range()
+        }
+    }
+
+    fn cursor(&self, cx: &App) -> usize {
+        if self.live_active {
+            self.live.read(cx).cursor()
+        } else {
+            self.editor.read(cx).cursor()
+        }
+    }
+
+    /// Selects `range` and focuses the editor. For tests.
     #[cfg(test)]
-    pub fn editor_state(&self) -> Entity<EditorState> {
-        self.editor.clone()
+    pub fn select_and_focus(&self, range: Range<usize>, window: &mut Window, cx: &mut App) {
+        if self.live_active {
+            self.live.update(cx, |live, cx| live.select(range, cx));
+        } else {
+            self.editor
+                .update(cx, |editor, cx| editor.set_selected_range(range, cx));
+        }
+        self.focus(window, cx);
+    }
+
+    /// The selected text. For tests.
+    #[cfg(test)]
+    pub fn selected_text(&self, cx: &App) -> String {
+        self.text(cx)[self.selection(cx)].to_string()
     }
 
     /// The character count shown in the status bar. For tests.
@@ -188,8 +244,13 @@ impl EditorPane {
 
     /// Puts the text cursor in the editor.
     pub fn focus(&self, window: &mut Window, cx: &mut App) {
-        self.editor
-            .update(cx, |editor, cx| editor.focus(window, cx));
+        if self.live_active {
+            let handle = self.live.read(cx).focus_handle(cx);
+            window.focus(&handle, cx);
+        } else {
+            self.editor
+                .update(cx, |editor, cx| editor.focus(window, cx));
+        }
     }
 
     /// The note was renamed or moved on disk; keep editing it at its new path.
@@ -201,19 +262,39 @@ impl EditorPane {
         cx.notify();
     }
 
-    // ----- Live / Source styling -----
+    // ----- Live / Source switching -----
 
-    /// Restyles the text when the view mode switches between Live and Source.
-    /// (Preview hides the editor, so it keeps whatever style it had.)
-    fn sync_markdown_style(&mut self, cx: &mut Context<Self>) {
-        let style = markdown_style_for(SettingsStore::get(cx).view_mode, self.style);
-        if style != self.style {
-            self.style = style;
-            self.editor.update(cx, |state, cx| {
-                state.set_highlighter_factory(highlighter_factory(style), cx);
-            });
-            cx.notify();
+    /// When the mode switches between Live and Source/Split, hands the text and
+    /// cursor to the other editor. (Preview shows neither, so nothing changes.)
+    fn sync_active_editor(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let live_active = uses_live(SettingsStore::get(cx).view_mode, self.live_active);
+        if live_active == self.live_active {
+            return;
         }
+        let text = self.text(cx);
+        let cursor = self.cursor(cx);
+        let was_focused = if self.live_active {
+            self.live.read(cx).focus_handle(cx).is_focused(window)
+        } else {
+            self.editor.read(cx).focus_handle(cx).is_focused(window)
+        };
+        self.live_active = live_active;
+        if live_active {
+            self.live
+                .update(cx, |live, cx| live.set_text(&text, cursor, cx));
+        } else {
+            self.editor.update(cx, |editor, cx| {
+                // Only replace when different: replacing counts as an edit.
+                if editor.value() != text {
+                    editor.replace_all(text.clone(), window, cx);
+                }
+                editor.set_selected_range(cursor..cursor, cx);
+            });
+        }
+        if was_focused {
+            self.focus(window, cx);
+        }
+        cx.notify();
     }
 
     // ----- Saving -----
@@ -242,7 +323,7 @@ impl EditorPane {
         if !self.dirty || !self.can_save {
             return;
         }
-        let text = self.editor.read(cx).value();
+        let text = self.text(cx);
         let contents = self.line_ending.apply(&text);
         match atomic_write(&self.path, contents.as_bytes()) {
             Ok(()) => self.dirty = false,
@@ -266,7 +347,7 @@ impl EditorPane {
         self.refresh_task = Some(cx.spawn(async move |this, cx| {
             cx.background_executor().timer(PREVIEW_DELAY).await;
             let Ok(text) = this.update(cx, |pane, cx| {
-                let text = pane.editor.read(cx).value();
+                let text = pane.text(cx);
                 pane.preview_text = text.clone();
                 cx.notify();
                 text
@@ -301,11 +382,15 @@ impl EditorPane {
         if !self.can_save {
             return;
         }
-        let (text, selection) = {
-            let editor = self.editor.read(cx);
-            (editor.value(), editor.selected_range())
-        };
-        let edit = transform(&text, selection);
+        let text = self.text(cx);
+        let edit = transform(&text, self.selection(cx));
+        if self.live_active {
+            self.live.update(cx, |live, cx| {
+                live.apply_edit(edit.range, &edit.replacement, edit.new_selection, cx);
+                live.focus(window, cx);
+            });
+            return;
+        }
         self.editor.update(cx, |editor, cx| {
             // The editor can only replace the selection, so select the range first.
             editor.set_selected_range(edit.range, cx);
@@ -313,6 +398,34 @@ impl EditorPane {
             editor.set_selected_range(edit.new_selection, cx);
             editor.focus(window, cx);
         });
+    }
+
+    /// A checkbox was clicked in the preview: flip `[ ]` ↔ `[x]` on that line.
+    /// The cursor and focus stay where they are.
+    fn toggle_task(&mut self, offset: usize, window: &mut Window, cx: &mut Context<Self>) {
+        if !self.can_save {
+            return;
+        }
+        let text = self.text(cx);
+        let Some((range, replacement)) = live_buffer::task_toggle(&text, offset) else {
+            return;
+        };
+        if self.live_active {
+            let selection = self.selection(cx);
+            self.live.update(cx, |live, cx| {
+                live.apply_edit(range, replacement, selection, cx);
+            });
+        } else {
+            self.editor.update(cx, |editor, cx| {
+                let selection = editor.selected_range();
+                editor.set_selected_range(range, cx);
+                editor.replace(replacement, window, cx);
+                editor.set_selected_range(selection, cx);
+            });
+        }
+        // Show the change right away instead of after the preview delay.
+        self.preview_text = self.text(cx);
+        cx.notify();
     }
 
     fn format_bold(&mut self, _: &FormatBold, window: &mut Window, cx: &mut Context<Self>) {
@@ -358,40 +471,40 @@ impl EditorPane {
             .child(view_mode_switch::render(mode, cx))
     }
 
-    fn render_editor(&self, cx: &App) -> AnyElement {
-        let editor = Editor::new(&self.editor)
+    /// The Source/Split editor: monospace, like a code editor.
+    fn render_source_editor(&self) -> AnyElement {
+        Editor::new(&self.editor)
             .bordered(false)
             .readonly(!self.can_save)
             .size_full()
-            .px_6()
-            .py_4();
-        match self.style {
-            // Live reads like a document: the normal UI font, a bit larger.
-            MarkdownStyle::Live => editor
-                .font_family(cx.theme().font_family.clone())
-                .text_size(px(16.)),
-            // Source stays monospace, like a code editor.
-            MarkdownStyle::Source => editor.text_size(px(15.)),
-        }
-        .into_any_element()
+            // The editor adds 12px of its own on the left, so this lines the
+            // text up with Live and Preview (24px from the edge in every mode).
+            .pl_3()
+            .pr_6()
+            .py_4()
+            .text_size(px(15.))
+            .into_any_element()
     }
 }
 
 impl Render for EditorPane {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let mode = SettingsStore::get(cx).view_mode;
-        let (line, column) = {
-            let editor = self.editor.read(cx);
-            cursor::line_col(&editor.value(), editor.cursor())
-        };
+        let (line, column) = cursor::line_col(&self.text(cx), self.cursor(cx));
 
         let body: AnyElement = match mode {
-            ViewMode::Preview => preview::render(self.preview_text.clone()).into_any_element(),
+            ViewMode::Preview => {
+                preview::render(self.preview_text.clone(), cx.weak_entity()).into_any_element()
+            }
             ViewMode::Split => h_resizable("editor-split")
-                .child(resizable_panel().child(self.render_editor(cx)))
-                .child(resizable_panel().child(preview::render(self.preview_text.clone())))
+                .child(resizable_panel().child(self.render_source_editor()))
+                .child(
+                    resizable_panel()
+                        .child(preview::render(self.preview_text.clone(), cx.weak_entity())),
+                )
                 .into_any_element(),
-            ViewMode::Live | ViewMode::Source => self.render_editor(cx),
+            ViewMode::Live => self.live.clone().into_any_element(),
+            ViewMode::Source => self.render_source_editor(),
         };
 
         v_flex()
@@ -412,12 +525,12 @@ impl Render for EditorPane {
     }
 }
 
-/// The editor styling for a view mode. Preview doesn't show the editor, so it
-/// keeps `current`.
-fn markdown_style_for(mode: ViewMode, current: MarkdownStyle) -> MarkdownStyle {
+/// True if the Live editor should be in charge in `mode`. Preview shows
+/// neither editor, so it keeps `current`.
+fn uses_live(mode: ViewMode, current: bool) -> bool {
     match mode {
-        ViewMode::Live => MarkdownStyle::Live,
-        ViewMode::Source | ViewMode::Split => MarkdownStyle::Source,
+        ViewMode::Live => true,
+        ViewMode::Source | ViewMode::Split => false,
         ViewMode::Preview => current,
     }
 }
