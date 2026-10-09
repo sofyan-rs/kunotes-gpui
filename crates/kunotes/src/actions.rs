@@ -21,6 +21,7 @@ actions!(
         ViewSplit,
         ViewPreview,
         CycleViewMode,
+        QuickSwitcher,
         Quit,
     ]
 );
@@ -57,6 +58,8 @@ pub fn bind_keys(cx: &mut App) {
         KeyBinding::new("secondary-n", NewFile, Some(WORKSPACE)),
         KeyBinding::new("secondary-shift-n", NewFolder, Some(WORKSPACE)),
         KeyBinding::new("secondary-\\", ToggleSidebar, Some(WORKSPACE)),
+        KeyBinding::new("secondary-k", QuickSwitcher, Some(WORKSPACE)),
+        KeyBinding::new("secondary-shift-o", QuickSwitcher, Some(WORKSPACE)),
         KeyBinding::new("secondary-2", ViewSource, Some(WORKSPACE)),
         KeyBinding::new("secondary-3", ViewSplit, Some(WORKSPACE)),
         KeyBinding::new("secondary-4", ViewPreview, Some(WORKSPACE)),
@@ -87,6 +90,7 @@ pub fn app_menus() -> Vec<Menu> {
         Menu::new("KuNotes").items([MenuItem::action("Quit KuNotes", Quit)]),
         Menu::new("File").items([
             MenuItem::action("Open Vault…", OpenVault),
+            MenuItem::action("Quick Open…", QuickSwitcher),
             MenuItem::separator(),
             MenuItem::action("New Note", NewFile),
             MenuItem::action("New Folder", NewFolder),

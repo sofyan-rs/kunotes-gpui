@@ -13,7 +13,7 @@ jobs:
   fmt:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@1.99.0
         with:
           components: rustfmt
@@ -31,7 +31,7 @@ jobs:
             os: windows-latest
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@1.99.0
         with:
           components: clippy
@@ -51,7 +51,7 @@ jobs:
             fontconfig-devel wayland-devel webkit2gtk4.1-devel \
             libxkbcommon-x11-devel libxcb-devel libX11-devel \
             openssl-devel libzstd-devel vulkan-loader-devel
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@1.99.0
         with:
           components: clippy

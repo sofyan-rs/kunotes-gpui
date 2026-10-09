@@ -103,6 +103,7 @@ kunotes-gpui/
 │               │   ├── status_bar.rs
 │               │   └── live/          # custom Live editor (Phase 10)
 │               ├── quick_switcher.rs
+│               ├── quick_switcher_tests.rs
 │               ├── dialogs.rs         # rename prompt, delete confirm
 │               └── empty_state.rs
 ├── assets/                    # app icon and images used at runtime

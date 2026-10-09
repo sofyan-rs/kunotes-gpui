@@ -146,6 +146,13 @@ impl VaultStore {
         cx.notify();
     }
 
+    /// Opens a note from outside the tree (e.g. the quick switcher): selects it
+    /// and expands its folders so it's visible in the tree.
+    pub fn open_note(&mut self, path: PathBuf, cx: &mut Context<Self>) {
+        self.reveal(&path);
+        self.select(path, false, cx);
+    }
+
     pub fn set_expanded(&mut self, folder: PathBuf, expanded: bool, cx: &mut Context<Self>) {
         if expanded {
             self.expanded.insert(folder);

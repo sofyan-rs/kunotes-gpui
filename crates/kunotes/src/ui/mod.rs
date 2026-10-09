@@ -3,6 +3,9 @@
 pub mod dialogs;
 pub mod editor;
 pub mod empty_state;
+pub mod quick_switcher;
+#[cfg(test)]
+mod quick_switcher_tests;
 pub mod sidebar;
 #[cfg(test)]
 pub mod test_helpers;

@@ -139,12 +139,14 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done
 
 ---
 
-## Phase 5: Quick switcher
+## Phase 5: Quick switcher ✅
 
-- [ ] `ui/quick_switcher.rs`: `Command` inside `open_dialog`, width 480, all `.md` files, file stem label + uppercase parent-folder hint, relative path as a keyword.
-- [ ] Up/down/enter/escape. Footer hints. "No matches" empty state.
-- [ ] Opening a file selects it in the tree (expanding its ancestors) and closes the dialog.
-- [ ] Bound to `secondary-k` and `secondary-shift-o`, plus the sidebar search button.
+- [x] `ui/quick_switcher.rs`: `Command` inside `open_dialog`, width 480, every `.md` file. Title on the left, uppercase parent folder on the right. Relative path is searchable as a keyword.
+- [x] Up/down/enter/escape. Footer hints. "No matches" empty state.
+- [x] Opening a note selects it in the tree and expands its folders (`VaultStore::open_note`), then closes the dialog.
+- [x] Bound to `secondary-k` and `secondary-shift-o`, plus the sidebar search button and File → Quick Open….
+
+**Tests:** 2 UI tests in `ui/quick_switcher_tests.rs`. Typing "plan" + Enter opens `Projects/Plan.md` (not the first note in the list, which proves filtering and index mapping) and expands `Projects`. Escape closes without opening anything.
 
 **Done when:** `secondary-k`, typing part of a name, then Enter opens the file on all three OSes.
 

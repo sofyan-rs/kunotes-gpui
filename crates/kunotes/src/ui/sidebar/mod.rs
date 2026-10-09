@@ -12,7 +12,7 @@ use gpui_kit::{
     Window, div,
 };
 
-use crate::actions::{DeleteSelection, NewFile, NewFolder, OpenVault, WORKSPACE};
+use crate::actions::{DeleteSelection, NewFile, NewFolder, OpenVault, QuickSwitcher, WORKSPACE};
 use crate::vault_store::VaultStore;
 use file_tree::FileTree;
 
@@ -66,8 +66,13 @@ impl Sidebar {
                 has_selection,
             ))
             .child(div().flex_1())
-            // Search comes in Phase 5; shown disabled until then.
-            .child(disabled_button("search", IconName::Search, "Search Notes"))
+            .child(header_button(
+                "search",
+                IconName::Search,
+                "Search Notes",
+                &QuickSwitcher,
+                has_vault,
+            ))
     }
 
     fn render_no_vault(&self, cx: &mut Context<Self>) -> impl IntoElement {
@@ -128,13 +133,4 @@ fn header_button(
         .tooltip_with_action(tooltip, action.as_ref(), Some(WORKSPACE))
         .disabled(!enabled)
         .on_click(move |_, window, cx| window.dispatch_action(action.boxed_clone(), cx))
-}
-
-fn disabled_button(id: &'static str, icon: IconName, tooltip: &'static str) -> Button {
-    Button::new(id)
-        .ghost()
-        .small()
-        .icon(icon)
-        .tooltip(tooltip)
-        .disabled(true)
 }

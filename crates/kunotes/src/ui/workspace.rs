@@ -11,12 +11,12 @@ use kunotes_core::paths::remap_path;
 use kunotes_core::settings::ViewMode;
 
 use crate::actions::{
-    CloseVault, CycleViewMode, DeleteSelection, NewFile, NewFolder, OpenVault, RenameSelection,
-    ToggleSidebar, ViewPreview, ViewSource, ViewSplit, WORKSPACE,
+    CloseVault, CycleViewMode, DeleteSelection, NewFile, NewFolder, OpenVault, QuickSwitcher,
+    RenameSelection, ToggleSidebar, ViewPreview, ViewSource, ViewSplit, WORKSPACE,
 };
 use crate::settings_store::SettingsStore;
 use crate::ui::editor::{EditorEvent, EditorPane, load_note};
-use crate::ui::{dialogs, empty_state, sidebar::Sidebar, title_bar};
+use crate::ui::{dialogs, empty_state, quick_switcher, sidebar::Sidebar, title_bar};
 use crate::vault_store::{VaultEvent, VaultStore};
 
 const SIDEBAR_DEFAULT_WIDTH: f32 = 250.;
@@ -284,6 +284,10 @@ impl Workspace {
         }
     }
 
+    fn quick_switcher(&mut self, _: &QuickSwitcher, window: &mut Window, cx: &mut Context<Self>) {
+        quick_switcher::open(self.vault.clone(), window, cx);
+    }
+
     fn toggle_sidebar(&mut self, _: &ToggleSidebar, _: &mut Window, cx: &mut Context<Self>) {
         SettingsStore::update(cx, |settings| {
             settings.sidebar_visible = !settings.sidebar_visible;
@@ -334,6 +338,7 @@ impl Render for Workspace {
             .on_action(cx.listener(Self::view_split))
             .on_action(cx.listener(Self::view_preview))
             .on_action(cx.listener(Self::cycle_view_mode))
+            .on_action(cx.listener(Self::quick_switcher))
             .size_full()
             .bg(cx.theme().background)
             .text_color(cx.theme().foreground)
