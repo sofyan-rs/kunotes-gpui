@@ -3,6 +3,8 @@
 mod context_menu;
 mod file_tree;
 #[cfg(test)]
+pub use file_tree::row_id as row_id_for_tests;
+#[cfg(test)]
 mod file_tree_tests;
 mod inline_edit;
 mod keyboard;

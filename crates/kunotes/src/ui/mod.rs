@@ -2,6 +2,7 @@
 
 pub mod dialogs;
 pub mod editor;
+pub mod editor_area;
 pub mod empty_state;
 pub mod quick_switcher;
 #[cfg(test)]

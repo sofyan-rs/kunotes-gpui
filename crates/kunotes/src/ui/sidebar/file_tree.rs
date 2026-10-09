@@ -127,8 +127,13 @@ impl FileTree {
         let path = row.path.clone();
         self.vault.update(cx, |vault, cx| {
             vault.select(path.clone(), row.is_dir, cx);
-            if row.is_dir && event.click_count() == 2 {
-                vault.toggle_expanded(path, cx);
+            if event.click_count() == 2 {
+                if row.is_dir {
+                    vault.toggle_expanded(path, cx);
+                } else {
+                    // Double-clicking a note keeps it open in a permanent tab.
+                    vault.keep_open(path, cx);
+                }
             }
         });
     }

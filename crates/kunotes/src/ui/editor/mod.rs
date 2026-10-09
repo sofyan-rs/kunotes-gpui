@@ -42,6 +42,8 @@ const PREVIEW_DELAY: Duration = Duration::from_millis(150);
 /// Something the workspace should show to the user.
 pub enum EditorEvent {
     Error(String),
+    /// The text changed (a preview tab becomes permanent when edited).
+    Edited,
 }
 
 pub struct EditorPane {
@@ -158,6 +160,11 @@ impl EditorPane {
         self.char_count
     }
 
+    /// True if there are changes not yet written to disk (shown as a dot on the tab).
+    pub fn is_dirty(&self) -> bool {
+        self.dirty
+    }
+
     /// True if the note opened read-only (not valid UTF-8).
     pub fn is_read_only(&self) -> bool {
         !self.can_save
@@ -165,11 +172,6 @@ impl EditorPane {
 
     pub fn path(&self) -> &Path {
         &self.path
-    }
-
-    /// The note's display name, e.g. "Plan" for `Plan.md`.
-    pub fn title(&self) -> String {
-        paths::note_title(&self.path)
     }
 
     /// Puts the text cursor in the editor.
@@ -193,6 +195,7 @@ impl EditorPane {
         self.dirty = true;
         self.schedule_save(cx);
         self.schedule_refresh(cx);
+        cx.emit(EditorEvent::Edited);
         cx.notify();
     }
 

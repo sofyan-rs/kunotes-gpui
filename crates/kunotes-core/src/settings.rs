@@ -24,6 +24,16 @@ pub enum ViewMode {
     Preview,
 }
 
+/// An open tab, remembered between launches.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SavedTab {
+    pub path: PathBuf,
+    #[serde(default)]
+    pub pinned: bool,
+    #[serde(default)]
+    pub preview: bool,
+}
+
 /// Everything KuNotes remembers between launches.
 ///
 /// `#[serde(default)]` means a missing field (e.g. from an older version)
@@ -35,6 +45,9 @@ pub struct Settings {
     pub view_mode: ViewMode,
     pub sidebar_width: Option<f32>,
     pub sidebar_visible: bool,
+    /// The tabs open in `last_vault`, in order, and which one was active.
+    pub open_tabs: Vec<SavedTab>,
+    pub active_tab: Option<usize>,
 }
 
 impl Default for Settings {
@@ -44,6 +57,8 @@ impl Default for Settings {
             view_mode: ViewMode::default(),
             sidebar_width: None,
             sidebar_visible: true,
+            open_tabs: Vec::new(),
+            active_tab: None,
         }
     }
 }

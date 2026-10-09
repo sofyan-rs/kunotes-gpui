@@ -18,6 +18,7 @@ Open any folder on disk as a "vault", browse it in a sidebar, and edit markdown 
 - **Formatter bar:** bold, italic, H1/H2, link, inline code, code block, quote, lists, horizontal rule.
 - **CommonMark preview:** headings, emphasis, inline code, fenced code blocks, ordered, unordered, and task lists, blockquotes, links, rules.
 - **Autosave:** debounced atomic writes, with no save button and no data loss on quit.
+- **Tabs** like VS Code: preview tabs, pin, close others/to the right/saved/all, drag to reorder, copy path, reveal in file manager; reopened on launch.
 - **Quick switcher** (`Ctrl/⌘+K`): filter all notes by name and open one from the keyboard.
 - **Live external sync:** changes made outside the app show up automatically.
 - **Remembers your last vault** across launches.

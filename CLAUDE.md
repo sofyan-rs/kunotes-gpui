@@ -6,7 +6,7 @@ This file guides Claude Code (claude.ai/code) when working in this repository.
 
 KuNotes is a minimal, cross-platform (**macOS, Windows, Linux — Fedora is the Linux target**) markdown vault app in Rust. It opens a folder on disk as a "vault". Files on disk are the only source of truth, with no database. UI is built with [gpui-kit](https://gpui-kit.com/) (`gpui-kit = "0.7.1"`), which re-exports GPUI. Don't add `gpui` as a direct dependency.
 
-Scope is intentionally minimal: open a folder, browse it, edit markdown. There are no wikilinks, backlinks, tags, graph, plugins, or sync. Push back on scope creep.
+Scope is intentionally minimal: open a folder, browse it, edit markdown. There are no wikilinks, backlinks, tags, graph, plugins, or sync. (Tabs are in scope; split editor groups are not.) Push back on scope creep.
 
 **Status:** docs-first. Check `docs/implementation/PLAN.md` for the current phase before writing code, and tick checkboxes there as items land.
 
@@ -47,7 +47,7 @@ Rust ≥ 1.92 (required by gpui-kit). Windows needs the MSVC toolchain. Fedora n
   - `vault_store.rs`: the `VaultStore` entity, the single source of truth, which emits `VaultEvent`.
   - `watcher.rs`: `notify` events go through a channel to `refresh`.
   - `platform.rs`: the **only** place for `#[cfg(target_os)]` and OS wording.
-  - `ui/`: views grouped by feature: `workspace.rs`, `title_bar.rs`, `sidebar/` (`mod.rs`, `file_tree.rs`, `inline_edit.rs`, `keyboard.rs`, `context_menu.rs`), `editor/` (`mod.rs` = EditorPane, `formatter_bar.rs`, `preview.rs`, `status_bar.rs`, `live/` = Live stage B), `quick_switcher.rs`, `dialogs.rs`, `empty_state.rs`.
+  - `ui/`: views grouped by feature: `workspace.rs`, `title_bar.rs`, `sidebar/` (`mod.rs`, `file_tree.rs`, `inline_edit.rs`, `keyboard.rs`, `context_menu.rs`), `editor/` (`mod.rs` = EditorPane, `formatter_bar.rs`, `preview.rs`, `status_bar.rs`, `live/` = Live stage B), `editor_area/` (tabs: `mod.rs` = EditorArea, `tab_bar.rs`), `quick_switcher.rs`, `dialogs.rs`, `empty_state.rs`. Tab rules are pure in `kunotes-core/src/tabs.rs`.
 
 Structure rules (ARCHITECTURE §3): the codebase must stay readable for engineers new to Rust.
 - Start with one file; make a folder (with `mod.rs`) only when a module needs several files.

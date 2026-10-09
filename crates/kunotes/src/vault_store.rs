@@ -19,8 +19,10 @@ use crate::watcher::{self, VaultWatcher};
 pub enum VaultEvent {
     /// The folder tree was rescanned.
     TreeChanged,
-    /// A note was just created; the editor takes focus so the user can type.
-    NoteCreated,
+    /// A note was just created; it opens in a permanent tab with the editor focused.
+    NoteCreated(PathBuf),
+    /// Open this note in a permanent tab, not a preview tab (double-click, quick switcher).
+    KeepOpen(PathBuf),
     /// A file operation failed; the message is meant for the user.
     Error(String),
 }
@@ -201,7 +203,20 @@ impl VaultStore {
     /// and expands its folders so it's visible in the tree.
     pub fn open_note(&mut self, path: PathBuf, cx: &mut Context<Self>) {
         self.reveal(&path);
-        self.select(path, false, cx);
+        self.select(path.clone(), false, cx);
+        self.keep_open(path, cx);
+    }
+
+    /// Asks the editor to keep this note in a permanent tab (e.g. double-click in the tree).
+    pub fn keep_open(&mut self, path: PathBuf, cx: &mut Context<Self>) {
+        cx.emit(VaultEvent::KeepOpen(path));
+    }
+
+    /// No note is shown in the editor (e.g. its last tab was closed).
+    pub fn clear_selected_file(&mut self, cx: &mut Context<Self>) {
+        if self.selected_file.take().is_some() {
+            cx.notify();
+        }
     }
 
     pub fn set_expanded(&mut self, folder: PathBuf, expanded: bool, cx: &mut Context<Self>) {
@@ -248,10 +263,11 @@ impl VaultStore {
         cx: &mut Context<Self>,
     ) -> Result<(), String> {
         let path = fs_ops::create_file_named(folder, name).map_err(|error| error.to_string())?;
+        let path_for_event = path.clone();
         self.reveal(&path);
         self.select(path, false, cx);
         self.refresh(cx);
-        cx.emit(VaultEvent::NoteCreated);
+        cx.emit(VaultEvent::NoteCreated(path_for_event));
         Ok(())
     }
 

@@ -42,7 +42,7 @@ fn a_note_deleted_outside_closes_the_editor_without_writing_it_back(cx: &mut Tes
 
     // Type something, so there are unsaved changes.
     let state = s.workspace.read_with(cx, |workspace, cx| {
-        workspace.editor().unwrap().read(cx).editor_state()
+        workspace.editor(cx).unwrap().read(cx).editor_state()
     });
     cx.update_window(s.window, |_, window, cx| {
         state.update(cx, |state, cx| state.focus(window, cx));
@@ -58,7 +58,7 @@ fn a_note_deleted_outside_closes_the_editor_without_writing_it_back(cx: &mut Tes
 
     assert!(
         s.workspace
-            .read_with(cx, |workspace, _| workspace.editor().is_none())
+            .read_with(cx, |workspace, cx| workspace.editor(cx).is_none())
     );
     assert!(!welcome.exists(), "the deleted note must not come back");
 }

@@ -11,6 +11,7 @@ gpui_kit::assets::icon_assets!(
     ExtraIcons,
     [
         Bold,
+        Close,
         Code,
         Columns2,
         Eye,
@@ -22,6 +23,7 @@ gpui_kit::assets::icon_assets!(
         List,
         ListOrdered,
         NotebookPen,
+        Pin,
         Quote,
         SquareCode,
         SquarePen,

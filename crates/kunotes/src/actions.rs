@@ -27,6 +27,21 @@ actions!(
     ]
 );
 
+// Tabs. Handled by the workspace, so they work wherever the focus is.
+actions!(
+    tabs,
+    [
+        CloseTab,
+        CloseOtherTabs,
+        CloseTabsToTheRight,
+        CloseSavedTabs,
+        CloseAllTabs,
+        TogglePinTab,
+        NextTab,
+        PreviousTab,
+    ]
+);
+
 // Quick switcher list navigation. Only active while the switcher is open.
 actions!(quick_switcher, [SwitcherUp, SwitcherDown, SwitcherOpen]);
 
@@ -66,6 +81,11 @@ pub fn bind_keys(cx: &mut App) {
         KeyBinding::new("secondary-shift-n", NewFolder, Some(WORKSPACE)),
         KeyBinding::new("secondary-\\", ToggleSidebar, Some(WORKSPACE)),
         KeyBinding::new("secondary-k", QuickSwitcher, Some(WORKSPACE)),
+        KeyBinding::new("secondary-w", CloseTab, Some(WORKSPACE)),
+        KeyBinding::new("secondary-alt-t", CloseOtherTabs, Some(WORKSPACE)),
+        KeyBinding::new("secondary-shift-w", CloseAllTabs, Some(WORKSPACE)),
+        KeyBinding::new("ctrl-tab", NextTab, Some(WORKSPACE)),
+        KeyBinding::new("ctrl-shift-tab", PreviousTab, Some(WORKSPACE)),
         KeyBinding::new("secondary-shift-o", QuickSwitcher, Some(WORKSPACE)),
         KeyBinding::new("secondary-2", ViewSource, Some(WORKSPACE)),
         KeyBinding::new("secondary-3", ViewSplit, Some(WORKSPACE)),
@@ -108,6 +128,9 @@ pub fn app_menus() -> Vec<Menu> {
             MenuItem::separator(),
             MenuItem::action("Rename…", RenameSelection),
             MenuItem::action("Move to Trash", DeleteSelection),
+            MenuItem::separator(),
+            MenuItem::action("Close Tab", CloseTab),
+            MenuItem::action("Close All Tabs", CloseAllTabs),
             MenuItem::separator(),
             MenuItem::action("Close Vault", CloseVault),
         ]),

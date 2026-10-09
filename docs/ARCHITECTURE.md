@@ -18,7 +18,7 @@ Scope: **open a folder, browse it, edit markdown.** There are no wikilinks, back
 ### Non-goals (for now)
 - Wikilinks, backlinks, tags, graph, plugins, sync.
 - Multiple windows or multiple vaults open at once.
-- Tabs or multiple open files.
+- Split editor groups (several tabs side by side).
 - Reloading the open editor's content when the file changes on disk (see [§7.3](#73-external-changes-to-the-open-file)).
 
 ---
@@ -106,6 +106,7 @@ kunotes-gpui/
 │               │   ├── status_bar.rs
 │               │   ├── view_mode_switch.rs
 │               │   └── live/          # custom Live editor (Phase 10)
+│               ├── editor_area/       # tabs: EditorArea (mod.rs), tab_bar.rs, tests
 │               ├── quick_switcher.rs
 │               ├── quick_switcher_tests.rs
 │               ├── dialogs.rs         # delete confirmation
@@ -384,6 +385,18 @@ With no selection, transforms apply at the cursor position. They fall back to th
 - No vault: a large muted folder-plus icon, "No Vault Selected", "Open a folder to use it as your vault.", and an [Open Vault…] button.
 - Vault open but no file selected: a note icon, "No File Selected", "Select a file from the sidebar to start writing."
 
+### 6.10 Tabs (`ui/editor_area/`)
+
+`EditorArea` is the right side of the window: a tab bar above the active note's editor, like VS Code. The tab rules live in `kunotes_core::tabs::TabList` (pure, unit-tested); `EditorArea` connects them to editors and the tree.
+
+- **Preview tabs:** a single click in the tree opens a *preview* tab (italic), which the next clicked note replaces. Typing in it, double-clicking the note in the tree, double-clicking the tab, or opening it from the quick switcher or as a new note makes it permanent.
+- **One editor per tab** (`EditorPane`), created the first time the tab is shown, so the cursor and unsaved changes survive switching. Leaving a tab saves it immediately; every pane also autosaves.
+- **Pinned tabs** stay on the left with a pin icon, and Close Others / to the Right / All skip them. Dragging keeps pinned and unpinned tabs separate.
+- **Tab bar:** click activates; double-click keeps; middle-click closes; drag to reorder; a dot replaces the close button while a note has unsaved changes. Right-click selects the tab and shows: Close (`secondary-w`), Close Others (`secondary-alt-t`), Close to the Right, Close Saved, Close All (`secondary-shift-w`), Pin/Unpin, Copy Path, Copy Relative Path, Reveal in Finder/Explorer. `ctrl-tab` / `ctrl-shift-tab` cycle tabs.
+- **Sync with the vault:** the active tab is the vault's `selected_file` (so the tree highlights it). Renames and moves remap every tab (`TabList::remap`) and its editor. Tabs of notes that no longer exist close without saving.
+- **Restore:** open tabs (order, pin, preview) and the active tab are saved in settings (`open_tabs`, `active_tab`) and reopened for the same vault on launch. Opening another vault saves and closes the old tabs.
+- Tab actions are bound in the `Workspace` context and forwarded to `EditorArea`, so they work wherever the focus is.
+
 ### 6.9 Live mode (`ui/editor/live/`)
 
 Live mode is a "realtime formatter", in the style of Obsidian Live Preview or Typora. It is **not** a rich-text WYSIWYG: there is no separate document model and no HTML round-trip. The raw markdown string stays the single source of truth, and Live mode is only a different way to draw and edit it. Saving writes exactly the characters in the buffer.
@@ -551,6 +564,7 @@ A Wayland or X11 session with a working Vulkan driver (`vulkan-loader` plus Mesa
 | Preview | CommonMark: headings, emphasis, inline code, code blocks, nested lists, task lists, blockquotes, links, rules; selectable text | §6.5 |
 | Saving | Debounced atomic autosave, flushed on switch and quit | §7.1 |
 | Quick switcher | Filter all notes by name, keyboard driven | §6.6 |
+| Tabs | Several notes open; preview tabs; pin, close variants, drag to reorder, copy path, reveal; restored on launch | §6.10 |
 | Live sync | Changes made outside the app appear in the tree | §7.2 |
 | Layout | Resizable, toggleable sidebar; view mode and sidebar width remembered | §5, §4.3 |
 

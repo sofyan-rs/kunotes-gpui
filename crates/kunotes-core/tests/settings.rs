@@ -18,6 +18,12 @@ fn settings_round_trip_and_fallback() {
         view_mode: ViewMode::Preview,
         sidebar_width: Some(280.0),
         sidebar_visible: false,
+        open_tabs: vec![kunotes_core::settings::SavedTab {
+            path: dir.path().join("a.md"),
+            pinned: true,
+            preview: false,
+        }],
+        active_tab: Some(0),
     };
     settings.save_to(&path).unwrap();
     assert_eq!(Settings::load_from(&path), settings);

@@ -4,19 +4,20 @@ use gpui_kit::component::resizable::{h_resizable, resizable_panel};
 use gpui_kit::component::{ActiveTheme as _, Theme, WindowExt as _, v_flex};
 use gpui_kit::{
     AppContext as _, Context, Entity, FocusHandle, InteractiveElement as _, IntoElement,
-    ParentElement as _, PathPromptOptions, Render, Styled as _, Subscription, Window, div, px,
+    ParentElement as _, PathPromptOptions, Render, Styled as _, Subscription, Window, px,
 };
 
-use kunotes_core::paths::remap_path;
 use kunotes_core::settings::ViewMode;
 
 use crate::actions::{
-    CloseVault, CycleViewMode, DeleteSelection, NewFile, NewFolder, OpenVault, QuickSwitcher,
-    RenameSelection, ToggleSidebar, ViewPreview, ViewSource, ViewSplit, WORKSPACE,
+    CloseAllTabs, CloseOtherTabs, CloseSavedTabs, CloseTab, CloseTabsToTheRight, CloseVault,
+    CycleViewMode, DeleteSelection, NewFile, NewFolder, NextTab, OpenVault, PreviousTab,
+    QuickSwitcher, RenameSelection, TogglePinTab, ToggleSidebar, ViewPreview, ViewSource,
+    ViewSplit, WORKSPACE,
 };
 use crate::settings_store::SettingsStore;
-use crate::ui::editor::{EditorEvent, EditorPane, load_note};
-use crate::ui::{dialogs, empty_state, quick_switcher, sidebar::Sidebar, title_bar};
+use crate::ui::editor_area::EditorArea;
+use crate::ui::{dialogs, quick_switcher, sidebar::Sidebar, title_bar};
 use crate::vault_store::{VaultEvent, VaultStore};
 
 const SIDEBAR_DEFAULT_WIDTH: f32 = 250.;
@@ -26,10 +27,8 @@ const SIDEBAR_MAX_WIDTH: f32 = 400.;
 pub struct Workspace {
     vault: Entity<VaultStore>,
     sidebar: Entity<Sidebar>,
-    /// The open note, if any.
-    editor: Option<Entity<EditorPane>>,
-    /// Listens to the open note's errors; replaced when another note opens.
-    editor_subscription: Option<Subscription>,
+    /// The tabs and the open notes' editors.
+    editor_area: Entity<EditorArea>,
     focus_handle: FocusHandle,
     /// Kept alive so our listeners keep working; dropping one unsubscribes it.
     _subscriptions: Vec<Subscription>,
@@ -39,31 +38,28 @@ impl Workspace {
     pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
         let vault = cx.new(|_| VaultStore::default());
         let sidebar = cx.new(|cx| Sidebar::new(vault.clone(), cx));
+        let editor_area = cx.new(|cx| EditorArea::new(vault.clone(), window, cx));
 
         let subscriptions = vec![
-            // Whenever the vault changes: open/close the right note, update the title.
+            // Keep the window title in step with the vault and the active tab.
             cx.observe_in(&vault, window, |this, _, window, cx| {
-                this.sync_editor(window, cx);
                 this.update_window_title(window, cx);
                 cx.notify();
             }),
-            // Save the open note before the app quits.
+            cx.observe_in(&editor_area, window, |this, _, window, cx| {
+                this.update_window_title(window, cx);
+                cx.notify();
+            }),
+            // Save every open note before the app quits.
             cx.on_app_quit(|this, cx| {
-                this.save_open_note(cx);
+                this.save_open_notes(cx);
                 async {}
             }),
-            // Show file operation errors; focus the editor after creating a note.
-            cx.subscribe_in(&vault, window, |_, _, event, window, cx| match event {
-                VaultEvent::Error(message) => window.push_notification(message.clone(), cx),
-                VaultEvent::NoteCreated => {
-                    // Deferred: the new note's pane is created by the vault observer first.
-                    cx.defer_in(window, |workspace, window, cx| {
-                        if let Some(pane) = &workspace.editor {
-                            pane.update(cx, |pane, cx| pane.focus(window, cx));
-                        }
-                    });
+            // Show file operation errors.
+            cx.subscribe_in(&vault, window, |_, _, event, window, cx| {
+                if let VaultEvent::Error(message) = event {
+                    window.push_notification(message.clone(), cx);
                 }
-                VaultEvent::TreeChanged => {}
             }),
             // Follow the system light/dark setting while the app is running.
             cx.observe_window_appearance(window, |_, window, cx| {
@@ -79,7 +75,7 @@ impl Workspace {
         // Also save when the window is closed (the app quits right after).
         let this = cx.entity().downgrade();
         window.on_window_should_close(cx, move |_, cx| {
-            let _ = this.update(cx, |workspace, cx| workspace.save_open_note(cx));
+            let _ = this.update(cx, |workspace, cx| workspace.save_open_notes(cx));
             true
         });
 
@@ -88,91 +84,23 @@ impl Workspace {
         Workspace {
             vault,
             sidebar,
-            editor: None,
-            editor_subscription: None,
+            editor_area,
             focus_handle,
             _subscriptions: subscriptions,
         }
     }
 
-    /// Makes the editor show the vault's selected note.
-    ///
-    /// - Same note: nothing to do.
-    /// - The open note was renamed/moved: keep the pane (and unsaved typing), update its path.
-    /// - Another note: save the old one first (unless it was deleted), then open the new one.
-    fn sync_editor(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let vault = self.vault.read(cx);
-        let selected = vault.selected_file().map(|p| p.to_path_buf());
-        let root = vault.root().map(|p| p.to_path_buf());
-        let moved = vault
-            .last_move()
-            .map(|(old, new)| (old.to_path_buf(), new.to_path_buf()));
-
-        if let Some(pane) = &self.editor {
-            let current = pane.read(cx).path().to_path_buf();
-            if Some(&current) == selected.as_ref() {
-                return;
-            }
-            let followed = moved
-                .and_then(|(old, new)| remap_path(&current, &old, &new))
-                .filter(|new_path| Some(new_path) == selected.as_ref());
-            if let Some(new_path) = followed {
-                pane.update(cx, |pane, cx| pane.set_path(new_path, cx));
-                return;
-            }
-            // A deleted note must not be written back (that would bring it back).
-            if current.exists() {
-                pane.update(cx, |pane, cx| pane.save_now(cx));
-            }
-        }
-
-        self.editor = None;
-        let (Some(path), Some(root)) = (selected, root) else {
-            return;
-        };
-        match load_note(path) {
-            Ok(note) => {
-                let pane = cx.new(|cx| EditorPane::new(note, root, window, cx));
-                self.show_editor(pane, window, cx);
-            }
-            Err(message) => window.push_notification(message, cx),
-        }
-    }
-
-    /// Starts showing `pane`: listens for its errors and warns about read-only notes.
-    fn show_editor(
-        &mut self,
-        pane: Entity<EditorPane>,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        self.editor_subscription =
-            Some(cx.subscribe_in(&pane, window, |_, _, event, window, cx| {
-                let EditorEvent::Error(message) = event;
-                window.push_notification(message.clone(), cx);
-            }));
-        if pane.read(cx).is_read_only() {
-            window.push_notification(
-                "This file isn't valid UTF-8, so it opened read-only to avoid damaging it.",
-                cx,
-            );
-        }
-        self.editor = Some(pane);
-    }
-
-    /// Writes the open note's unsaved changes now.
-    fn save_open_note(&mut self, cx: &mut Context<Self>) {
-        if let Some(pane) = &self.editor {
-            pane.update(cx, |pane, cx| pane.save_now(cx));
-        }
+    /// Writes every open note's unsaved changes now.
+    fn save_open_notes(&mut self, cx: &mut Context<Self>) {
+        self.editor_area.update(cx, |area, cx| area.save_all(cx));
     }
 
     /// Window title: the open note, else the vault, else the app name.
     fn update_window_title(&self, window: &mut Window, cx: &mut Context<Self>) {
         let name = self
-            .editor
-            .as_ref()
-            .map(|pane| pane.read(cx).title())
+            .editor_area
+            .read(cx)
+            .active_title()
             .or_else(|| self.vault.read(cx).name());
         let title = match name {
             Some(name) => format!("{name} — KuNotes"),
@@ -184,9 +112,12 @@ impl Workspace {
     fn set_view_mode(&mut self, mode: ViewMode, cx: &mut Context<Self>) {
         SettingsStore::update(cx, |settings| settings.view_mode = mode);
         cx.notify();
-        if let Some(pane) = &self.editor {
-            pane.update(cx, |_, cx| cx.notify());
-        }
+        self.editor_area.update(cx, |area, cx| {
+            if let Some(pane) = area.active_pane() {
+                pane.update(cx, |_, cx| cx.notify());
+            }
+            cx.notify();
+        });
     }
 
     fn view_source(&mut self, _: &ViewSource, _: &mut Window, cx: &mut Context<Self>) {
@@ -216,10 +147,16 @@ impl Workspace {
         self.vault.clone()
     }
 
-    /// The open note's pane. For tests.
+    /// The active tab's editor. For tests.
     #[cfg(test)]
-    pub fn editor(&self) -> Option<Entity<EditorPane>> {
-        self.editor.clone()
+    pub fn editor(&self, cx: &gpui_kit::App) -> Option<Entity<crate::ui::editor::EditorPane>> {
+        self.editor_area.read(cx).active_pane().cloned()
+    }
+
+    /// The tabs view. For tests.
+    #[cfg(test)]
+    pub fn editor_area(&self) -> Entity<EditorArea> {
+        self.editor_area.clone()
     }
 
     /// Asks the user for a folder and opens it as the vault.
@@ -315,17 +252,16 @@ impl Workspace {
         });
         cx.notify();
     }
+}
 
-    fn render_detail(&self, cx: &mut Context<Self>) -> impl IntoElement {
-        let has_vault = self.vault.read(cx).root().is_some();
-        div()
-            .size_full()
-            .bg(cx.theme().background)
-            .child(match &self.editor {
-                Some(pane) => pane.clone().into_any_element(),
-                None if has_vault => empty_state::no_file_selected(cx).into_any_element(),
-                None => empty_state::no_vault(cx).into_any_element(),
-            })
+impl Workspace {
+    /// Wraps an editor-area method as an action handler for the workspace.
+    fn tab_action<A: gpui_kit::Action>(
+        &self,
+        handler: impl Fn(&mut EditorArea, &A, &mut Window, &mut Context<EditorArea>) + 'static,
+    ) -> impl Fn(&A, &mut Window, &mut gpui_kit::App) + 'static {
+        let area = self.editor_area.clone();
+        move |action, window, cx| area.update(cx, |area, cx| handler(area, action, window, cx))
     }
 }
 
@@ -338,9 +274,9 @@ impl Render for Workspace {
             .unwrap_or(SIDEBAR_DEFAULT_WIDTH)
             .clamp(SIDEBAR_MIN_WIDTH, SIDEBAR_MAX_WIDTH);
         let title = self
-            .editor
-            .as_ref()
-            .map(|pane| pane.read(cx).title())
+            .editor_area
+            .read(cx)
+            .active_title()
             .or_else(|| self.vault.read(cx).name());
 
         v_flex()
@@ -360,6 +296,35 @@ impl Render for Workspace {
             .on_action(cx.listener(Self::view_preview))
             .on_action(cx.listener(Self::cycle_view_mode))
             .on_action(cx.listener(Self::quick_switcher))
+            // Tab commands go to the editor area, wherever the focus is.
+            .on_action(
+                self.tab_action(|area, _: &CloseTab, window, cx| area.close_active(window, cx)),
+            )
+            .on_action(
+                self.tab_action(|area, _: &CloseOtherTabs, window, cx| {
+                    area.close_others(window, cx)
+                }),
+            )
+            .on_action(
+                self.tab_action(|area, _: &CloseTabsToTheRight, window, cx| {
+                    area.close_to_the_right(window, cx)
+                }),
+            )
+            .on_action(
+                self.tab_action(|area, _: &CloseSavedTabs, window, cx| {
+                    area.close_saved(window, cx)
+                }),
+            )
+            .on_action(
+                self.tab_action(|area, _: &CloseAllTabs, window, cx| area.close_all(window, cx)),
+            )
+            .on_action(
+                self.tab_action(|area, _: &TogglePinTab, window, cx| area.toggle_pin(window, cx)),
+            )
+            .on_action(self.tab_action(|area, _: &NextTab, window, cx| area.cycle(1, window, cx)))
+            .on_action(
+                self.tab_action(|area, _: &PreviousTab, window, cx| area.cycle(-1, window, cx)),
+            )
             .size_full()
             .bg(cx.theme().background)
             .text_color(cx.theme().foreground)
@@ -380,7 +345,7 @@ impl Render for Workspace {
                             .visible(sidebar_visible)
                             .child(self.sidebar.clone()),
                     )
-                    .child(resizable_panel().child(self.render_detail(cx))),
+                    .child(resizable_panel().child(self.editor_area.clone())),
             )
     }
 }

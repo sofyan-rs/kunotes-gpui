@@ -195,6 +195,7 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done
 
 - [x] Inline rename and new note/folder in the tree, like VS Code/Zed (`sidebar/inline_edit.rs`), replacing the rename dialog. New notes open with the editor focused. 8 UI tests cover F2 rename keeping `.md`, invalid and taken names, Escape, new items in the target folder, and click-away confirm/cancel.
 - [x] Quick switcher rebuilt as its own view, with a padded, centered search field and right-aligned folder labels (gpui-kit `Command` couldn't be padded). Arrow-key test added.
+- [x] Tabs like VS Code (`ui/editor_area/`, rules in `kunotes-core/src/tabs.rs`): preview tabs, pin, Close / Others / to the Right / Saved / All, drag to reorder, copy path, reveal, unsaved dot, saved on tab switch, restored on launch. 13 core unit tests + 9 UI tests.
 - [x] Testing note: UI test windows are activated (`window.activate_window()` in `test_helpers`), because GPUI only reports focus loss in an active window.
 
 ## Phase 9: Live mode stage A, styled source (v1.5)

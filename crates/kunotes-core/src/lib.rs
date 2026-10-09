@@ -14,6 +14,7 @@ pub mod node;
 pub mod paths;
 pub mod search;
 pub mod settings;
+pub mod tabs;
 
 pub use error::{CoreError, Result};
 pub use node::VaultNode;

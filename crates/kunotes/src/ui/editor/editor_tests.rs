@@ -25,7 +25,7 @@ fn open_note(s: &Setup, cx: &mut TestAppContext, relative: &str) {
 fn editor(s: &Setup, cx: &mut TestAppContext) -> Entity<EditorState> {
     s.workspace.read_with(cx, |workspace, cx| {
         workspace
-            .editor()
+            .editor(cx)
             .expect("a note should be open")
             .read(cx)
             .editor_state()
@@ -181,7 +181,7 @@ fn character_count_follows_typing(cx: &mut TestAppContext) {
     open_note(&s, cx, "Welcome.md");
     let count = |cx: &mut TestAppContext| {
         s.workspace.read_with(cx, |workspace, cx| {
-            workspace.editor().unwrap().read(cx).char_count()
+            workspace.editor(cx).unwrap().read(cx).char_count()
         })
     };
     assert_eq!(count(cx), 10); // "# Welcome\n"
