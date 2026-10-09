@@ -74,14 +74,20 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done
 
 **Goal:** the window opens, a vault can be opened and is remembered, and the layout matches the mockup in §5 (without the tree contents yet).
 
-- [ ] `actions.rs`: `actions!(kunotes, [OpenVault, NewFile, NewFolder, DeleteSelection, RenameSelection, QuickSwitcher, ToggleSidebar, ViewLive, ViewSource, ViewSplit, ViewPreview, CycleViewMode, SaveNow, Quit])`.
-- [ ] `app.rs`: keybindings (§8.1), `cx.set_menus` (macOS), quit handling, theme follows system.
-- [ ] `vault_store.rs`: `VaultStore` entity with `open_vault`, `restore_last_vault`, `close_vault`, `refresh` (background scan + generation guard), and events.
-- [ ] `ui/workspace.rs`: `TitleBar` (sidebar toggle, centered title) + `h_resizable` (sidebar 250, range 200–400, persisted width/visibility) + detail area.
-- [ ] `ui/sidebar/mod.rs`: header icon bar with tooltips and disabled states; "No Vault Open" + button.
-- [ ] `ui/empty_state.rs`: both variants.
-- [ ] Open vault via `cx.prompt_for_paths` (directories only, prompt "Open Vault").
-- [ ] Restore the last vault on launch. Clear the setting if the folder is gone.
+- [x] `actions.rs`: actions added as each phase needs them (now `OpenVault`, `CloseVault`, `NewFile`, `NewFolder`, `ToggleSidebar`, `Quit`), their keybindings, and `app_menus()`.
+- [x] `app.rs`: init order (gpui-kit → settings → keys → menus), `cx.set_menus` (macOS) + `GlobalState::set_app_menus` for the in-window `AppMenuBar` (Windows/Linux), quit handling, settings saved on quit.
+- [x] `assets.rs`: `AppAssets` = gpui-kit default icons + `icon_assets!` extras (gpui-kit only embeds ~100 icons by default; others render blank).
+- [x] `settings_store.rs`: `SettingsStore` GPUI global (`get` / `update` with a 300ms debounced background save / `save_now`).
+- [x] `vault_store.rs`: `VaultStore` entity with `open_vault`, `restore_last_vault`, `close_vault`, `refresh` (background scan + generation guard), `create_file`/`create_folder` in the root, and `VaultEvent`.
+- [x] `ui/workspace.rs`: `h_resizable` (sidebar 250, range 200–400, persisted width/visibility) + detail area, focused on start so shortcuts work; window title = vault name; theme follows system (`observe_window_appearance`).
+- [x] `ui/title_bar.rs`: `TitleBar` with sidebar toggle, centered title, `AppMenuBar` on Windows/Linux.
+- [x] `ui/sidebar/mod.rs`: header icon bar with tooltips (incl. shortcut) and disabled states; "No Vault Open" + button. Delete and Search stay disabled until Phases 3 and 5.
+- [x] `ui/sidebar/file_tree.rs`: read-only `uniform_list` of top-level rows (Phase 3 makes it interactive).
+- [x] `ui/empty_state.rs`: both variants.
+- [x] Open vault via `cx.prompt_for_paths` (directories only, prompt "Open Vault"); picker failure shows a notification.
+- [x] Restore the last vault on launch. Clear the setting if the folder is gone.
+
+**Checked on macOS 15.8:** empty states render; restoring a vault from settings shows the tree (hidden and non-md files skipped, folders first), remembered sidebar width, and vault name as the title. 🧪 Still to check by hand: the folder picker, sidebar drag/toggle, and shortcuts on each OS (they need real mouse/keyboard input).
 
 **Done when:** on all three OSes, opening a folder, quitting, and relaunching reopens it, and the empty states and sidebar resize/toggle work.
 

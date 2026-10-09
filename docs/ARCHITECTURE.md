@@ -83,6 +83,8 @@ kunotes-gpui/
 │           ├── app.rs         # setup: theme, menus, open the main window
 │           ├── actions.rs     # every action + its keybinding, in one place
 │           ├── platform.rs    # the ONLY place for OS-specific code and wording
+│           ├── assets.rs      # icons: gpui-kit defaults + the extra icons we use
+│           ├── settings_store.rs # Settings as a GPUI global, saved on change
 │           ├── vault_store.rs # VaultStore entity: shared app state + events
 │           ├── watcher.rs     # file watcher -> VaultStore::refresh
 │           ├── autosave.rs    # SaveDebouncer

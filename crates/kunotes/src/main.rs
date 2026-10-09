@@ -1,37 +1,19 @@
 //! KuNotes entry point: sets up logging and starts the GPUI app.
-//! (Phase 0 placeholder window; real setup moves to `app.rs` in Phase 2.)
+//! Everything else happens in `app.rs`.
 
-use gpui_kit::component::button::{Button, ButtonVariants};
-use gpui_kit::*;
-
-struct HelloWorld;
-
-impl Render for HelloWorld {
-    fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
-        div()
-            .flex()
-            .flex_col()
-            .size_full()
-            .items_center()
-            .justify_center()
-            .gap_2()
-            .child(kunotes_core::APP_NAME)
-            .child(
-                Button::new("hello")
-                    .primary()
-                    .label("Hello, GPUI Kit")
-                    .on_click(|_, _, _| log::info!("clicked")),
-            )
-    }
-}
+mod actions;
+mod app;
+mod assets;
+mod platform;
+mod settings_store;
+mod ui;
+mod vault_store;
 
 fn main() {
+    // Default to warnings only; use RUST_LOG=kunotes=debug for more detail.
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("warn")).init();
 
-    application().with_assets(assets::Assets).run(|cx| {
-        init(cx);
-
-        open_window(WindowOptions::default(), cx, |_, cx| cx.new(|_| HelloWorld))
-            .expect("failed to open main window");
-    });
+    gpui_kit::application()
+        .with_assets(assets::AppAssets)
+        .run(app::run);
 }
