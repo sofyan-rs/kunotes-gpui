@@ -152,12 +152,17 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done
 
 ---
 
-## Phase 6: Live external sync
+## Phase 6: Live external sync ✅
 
-- [ ] `watcher.rs`: `notify-debouncer-full` recursive watch (500ms) → async channel → `cx.spawn` loop → `VaultStore::refresh`.
-- [ ] The watcher restarts on vault switch and is dropped on close.
-- [ ] Watch failures (e.g. the Linux inotify limit) are logged and shown in one notification. The app keeps working.
-- [ ] Refresh keeps selection and expansion. If the open file was deleted externally, clear the editor and show the empty state.
+- [x] `watcher.rs`: `notify-debouncer-full` recursive watch (500ms), then a `futures` channel, a `cx.spawn` loop, and `VaultStore::refresh`. Changes that only touch hidden paths (`.git`, our `.kunotes.tmp` files) are ignored.
+- [x] Event paths are matched against both the vault path and its canonical path (macOS `/var` → `/private/var`, symlinked vaults).
+- [x] The watcher restarts on vault switch and is dropped on close.
+- [x] Watch failures (e.g. the Linux inotify limit) are logged and shown in one notification. The app keeps working.
+- [x] Refresh keeps selection and expansion. Paths that no longer exist are forgotten (`forget_missing_paths`), so a note deleted outside the app closes the editor and is never written back.
+
+**Tests:** `watcher.rs` has a real-filesystem test (plain `#[test]`, since GPUI's deterministic scheduler forbids the watcher's OS thread): hidden files are ignored and a new note is reported. `vault_store_tests.rs` has 2 UI tests: a note created outside appears after refresh, and a note deleted outside closes the editor without being written back, even with unsaved typing. UI tests turn the OS watcher off (`VaultStore::disable_live_sync`).
+
+**Checked on macOS 15.8:** with the app running, `mkdir` and creating a `.md` file from the shell showed up in the tree within ~3s.
 
 **Done when:** creating, renaming, or deleting files from Finder, Explorer, a file manager, or a terminal appears in the tree within ~1s on every OS.
 

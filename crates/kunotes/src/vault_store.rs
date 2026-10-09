@@ -12,6 +12,7 @@ use kunotes_core::paths::{ancestors_within, remap_path};
 use kunotes_core::{VaultNode, fs_ops};
 
 use crate::settings_store::SettingsStore;
+use crate::watcher::{self, VaultWatcher};
 
 /// Something changed that views may want to react to.
 #[derive(Debug, Clone)]
@@ -38,6 +39,13 @@ pub struct VaultStore {
     /// Increased on every scan so a slow, outdated scan can't overwrite a newer one.
     scan_generation: u64,
     scan_task: Option<Task<()>>,
+    /// Rescans when files change outside the app. `None` if watching failed.
+    watcher: Option<VaultWatcher>,
+    /// So a broken watcher shows one notification, not one per event.
+    watch_error_shown: bool,
+    /// Tests turn the OS watcher off: its background thread would break GPUI's
+    /// deterministic test scheduler. (Default `false` = live sync on.)
+    live_sync_disabled: bool,
 }
 
 impl EventEmitter<VaultEvent> for VaultStore {}
@@ -83,11 +91,36 @@ impl VaultStore {
     pub fn open_vault(&mut self, path: PathBuf, cx: &mut Context<Self>) {
         *self = VaultStore {
             root: Some(path.clone()),
+            live_sync_disabled: self.live_sync_disabled,
             ..VaultStore::default()
         };
-        SettingsStore::update(cx, |settings| settings.last_vault = Some(path));
+        SettingsStore::update(cx, |settings| settings.last_vault = Some(path.clone()));
         self.refresh(cx);
+        if !self.live_sync_disabled {
+            match watcher::start(&path, cx) {
+                Ok(watcher) => self.watcher = Some(watcher),
+                Err(message) => self.watch_failed(message, cx),
+            }
+        }
         cx.notify();
+    }
+
+    /// Turns off the OS file watcher for vaults opened after this call. For tests.
+    #[cfg(test)]
+    pub fn disable_live_sync(&mut self) {
+        self.live_sync_disabled = true;
+    }
+
+    /// Live sync broke (e.g. Linux's inotify watch limit). The app keeps working;
+    /// changes made outside it just won't show up until the vault is reopened.
+    pub fn watch_failed(&mut self, message: String, cx: &mut Context<Self>) {
+        log::warn!("file watcher: {message}");
+        if !self.watch_error_shown {
+            self.watch_error_shown = true;
+            cx.emit(VaultEvent::Error(format!(
+                "Live sync is unavailable, so outside changes won't appear automatically: {message}"
+            )));
+        }
     }
 
     /// Reopens the vault from the last session, if its folder still exists.
@@ -129,10 +162,26 @@ impl VaultStore {
                     return; // a newer scan was started; drop this result
                 }
                 store.tree = Some(tree);
+                store.forget_missing_paths();
                 cx.emit(VaultEvent::TreeChanged);
                 cx.notify();
             });
         }));
+    }
+
+    /// After a rescan: drop selections and expanded folders that no longer exist
+    /// (e.g. deleted outside the app). Clearing `selected_file` closes the editor,
+    /// and the workspace won't write a missing note back.
+    /// Only a handful of paths are checked, so this is cheap on the UI thread.
+    fn forget_missing_paths(&mut self) {
+        let missing = |slot: &Option<PathBuf>| slot.as_deref().is_some_and(|p| !p.exists());
+        if missing(&self.selected_file) {
+            self.selected_file = None;
+        }
+        if missing(&self.selected_path) {
+            self.selected_path = None;
+        }
+        self.expanded.retain(|folder| folder.exists());
     }
 
     // ----- Selection and expansion -----

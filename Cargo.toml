@@ -24,6 +24,9 @@ dirs = "7"
 unicode-segmentation = "1"
 tempfile = "3"
 opener = { version = "0.9", features = ["reveal"] }
+notify = "8"
+notify-debouncer-full = "0.6"
+futures = "0.3"
 
 # Framework crates are optimized even in debug builds so the app stays responsive.
 [profile.dev.package]

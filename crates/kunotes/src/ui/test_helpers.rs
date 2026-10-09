@@ -74,7 +74,10 @@ pub fn setup(cx: &mut TestAppContext) -> Setup {
 
     let vault = workspace.read_with(cx, |workspace, _| workspace.vault());
     let root = dir.path().to_path_buf();
-    vault.update(cx, |vault, cx| vault.open_vault(root, cx));
+    vault.update(cx, |vault, cx| {
+        vault.disable_live_sync(); // its OS thread would break the test scheduler
+        vault.open_vault(root, cx);
+    });
     cx.run_until_parked(); // let the background scan finish
 
     Setup {

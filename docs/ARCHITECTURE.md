@@ -225,7 +225,7 @@ Methods (each wraps a `kunotes-core` function, then calls `refresh` and updates 
 The app isn't sandboxed, so the last vault is stored as a plain path.
 
 ```rust
-// dirs::config_dir()/kunotes/settings.json
+// $KUNOTES_CONFIG_DIR/settings.json if set, else dirs::config_dir()/kunotes/settings.json
 #[derive(Serialize, Deserialize, Default)]
 pub struct Settings {
     pub last_vault: Option<PathBuf>,
@@ -458,9 +458,12 @@ Files that aren't valid UTF-8 open read-only (`can_save = false`) and are never 
 
 ### 7.2 Watcher (`watcher.rs`)
 
-- `notify-debouncer-full` uses a recursive watch on the vault root with a 500ms debounce.
-- Any event sends a refresh signal. Our own writes also trigger a rescan. That's harmless because the rescan is cheap and runs in the background, and the tree diff keeps the selection and expansion.
-- On Linux, inotify watch limits can be hit on huge vaults. On error, log it, push one notification ("Live sync unavailable"), and keep the app working.
+- `watch_os` (no GPUI, tested with real files) runs `notify-debouncer-full` recursively on the vault with a 500ms debounce. It reports a change only if some event path is visible, meaning no part below the vault root starts with `.`. That skips `.git` churn and our own `.name.kunotes.tmp` save files.
+- Event paths are compared against both the opened path and its canonical form, because the OS may report the real path (macOS `/var` → `/private/var`, symlinked vaults). Canonicalizing alone would break Windows (`\\?\` prefix).
+- `start` sends signals over a `futures` channel to a `cx.spawn` loop that calls `VaultStore::refresh`, which scans in the background.
+- After each rescan, `forget_missing_paths` drops a selection or expanded folder whose path is gone. A note deleted outside the app therefore closes, and the workspace doesn't write it back.
+- On a watcher error (e.g. the Linux inotify limit): log it, show one notification ("Live sync is unavailable…"), keep working.
+- UI tests call `VaultStore::disable_live_sync`, because the watcher's OS thread breaks GPUI's deterministic test scheduler.
 
 ### 7.3 External changes to the open file
 

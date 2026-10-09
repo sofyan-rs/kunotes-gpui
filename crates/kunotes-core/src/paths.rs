@@ -60,6 +60,18 @@ pub fn remap_path(path: &Path, old: &Path, new: &Path) -> Option<PathBuf> {
     }
 }
 
+/// True if `path` is hidden inside the vault: some part of it below `root`
+/// starts with "." (like `.git/HEAD` or `.note.md.kunotes.tmp`).
+/// Paths outside `root` count as hidden, since they aren't part of the vault.
+pub fn is_hidden_within(root: &Path, path: &Path) -> bool {
+    let Ok(relative) = path.strip_prefix(root) else {
+        return true;
+    };
+    relative
+        .components()
+        .any(|part| part.as_os_str().to_string_lossy().starts_with('.'))
+}
+
 /// All folders between `root` (exclusive) and `path` (exclusive), outermost first.
 /// Used to expand the tree so a file becomes visible.
 pub fn ancestors_within(root: &Path, path: &Path) -> Vec<PathBuf> {
@@ -123,6 +135,21 @@ mod tests {
         assert_eq!(remap_path(&root().join("Other.md"), &old, &new), None);
         // "Projects2" only shares a text prefix with "Projects"; it is not inside it.
         assert_eq!(remap_path(&root().join("Projects2"), &old, &new), None);
+    }
+
+    #[test]
+    fn hidden_paths_are_detected_anywhere_below_root() {
+        assert!(is_hidden_within(&root(), &root().join(".git").join("HEAD")));
+        assert!(is_hidden_within(
+            &root(),
+            &root().join("a").join(".b.md.kunotes.tmp")
+        ));
+        assert!(!is_hidden_within(&root(), &root().join("a").join("b.md")));
+        assert!(
+            !is_hidden_within(&root(), &root()),
+            "the vault root itself is visible"
+        );
+        assert!(is_hidden_within(&root(), Path::new("elsewhere/a.md")));
     }
 
     #[test]

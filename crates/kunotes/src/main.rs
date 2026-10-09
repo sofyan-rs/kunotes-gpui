@@ -8,6 +8,9 @@ mod platform;
 mod settings_store;
 mod ui;
 mod vault_store;
+#[cfg(test)]
+mod vault_store_tests;
+mod watcher;
 
 fn main() {
     // Default to warnings only; use RUST_LOG=kunotes=debug for more detail.
