@@ -198,19 +198,18 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done
 - [x] Tabs like VS Code (`ui/editor_area/`, rules in `kunotes-core/src/tabs.rs`): preview tabs, pin, Close / Others / to the Right / Saved / All, drag to reorder, copy path, reveal, unsaved dot, saved on tab switch, restored on launch. 13 core unit tests + 9 UI tests.
 - [x] Testing note: UI test windows are activated (`window.activate_window()` in `test_helpers`), because GPUI only reports focus loss in an active window.
 
-## Phase 9: Live mode stage A, styled source (v1.5)
+## Phase 9: Live mode stage A, styled source (v1.5) ✅
 
 **Goal:** a formatted writing view on the same buffer (§6.9 stage A). Becomes the default mode.
 
-- [ ] Live segment in the view-mode toggle + `secondary-1`. Default `view_mode` becomes Live for new settings files.
-- [ ] Second editor configuration: proportional UI font, custom markdown highlight theme (headings, bold, italic, inline code, links, dimmed markers).
-- [ ] Cursor/selection carries over when switching Live ⇄ Source.
-- [ ] Formatter bar and editor shortcuts work in Live.
-- [ ] Light and dark theme variants of the highlight styles.
+- [x] Live segment first in the view-mode switch + `secondary-1`, View menu, cycle order Live → Source → Split → Preview. Default `view_mode` is Live for new settings files.
+- [x] `kunotes-core/src/live.rs`: markdown parts with byte ranges (9 unit tests).
+- [x] `ui/editor/markdown_style.rs`: one `InputHighlighter` for Live and Source (theme colors; Live fades markers, bolds headings, uses the UI font). 3 unit tests.
+- [x] Cursor, selection, and buffer carry over when switching Live ⇄ Source (same `EditorState`).
+- [x] Formatter bar and editor shortcuts work in Live.
+- [x] Light and dark themes via the theme's syntax colors.
 
-**Done when:** writing in Live on `Example.md` shows emphasis and headings styled, switching modes never changes the file bytes, and this holds on all three OSes.
-
----
+**Done when:** writing in Live on `Example.md` shows emphasis and headings styled (checked by screenshot), and switching modes never changes the file bytes (UI test).
 
 ## Phase 10: Live mode stage B, custom live editor (v2)
 

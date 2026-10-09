@@ -18,6 +18,7 @@ actions!(
         ToggleSidebar,
         DeleteSelection,
         RenameSelection,
+        ViewLive,
         ViewSource,
         ViewSplit,
         ViewPreview,
@@ -87,6 +88,7 @@ pub fn bind_keys(cx: &mut App) {
         KeyBinding::new("ctrl-tab", NextTab, Some(WORKSPACE)),
         KeyBinding::new("ctrl-shift-tab", PreviousTab, Some(WORKSPACE)),
         KeyBinding::new("secondary-shift-o", QuickSwitcher, Some(WORKSPACE)),
+        KeyBinding::new("secondary-1", ViewLive, Some(WORKSPACE)),
         KeyBinding::new("secondary-2", ViewSource, Some(WORKSPACE)),
         KeyBinding::new("secondary-3", ViewSplit, Some(WORKSPACE)),
         KeyBinding::new("secondary-4", ViewPreview, Some(WORKSPACE)),
@@ -147,6 +149,7 @@ pub fn app_menus() -> Vec<Menu> {
         Menu::new("View").items([
             MenuItem::action("Toggle Sidebar", ToggleSidebar),
             MenuItem::separator(),
+            MenuItem::action("Live", ViewLive),
             MenuItem::action("Source", ViewSource),
             MenuItem::action("Split", ViewSplit),
             MenuItem::action("Preview", ViewPreview),

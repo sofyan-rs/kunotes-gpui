@@ -12,7 +12,7 @@ use kunotes_core::settings::ViewMode;
 use crate::actions::{
     CloseAllTabs, CloseOtherTabs, CloseSavedTabs, CloseTab, CloseTabsToTheRight, CloseVault,
     CycleViewMode, DeleteSelection, NewFile, NewFolder, NextTab, OpenVault, PreviousTab,
-    QuickSwitcher, RenameSelection, TogglePinTab, ToggleSidebar, ViewPreview, ViewSource,
+    QuickSwitcher, RenameSelection, TogglePinTab, ToggleSidebar, ViewLive, ViewPreview, ViewSource,
     ViewSplit, WORKSPACE,
 };
 use crate::settings_store::SettingsStore;
@@ -120,6 +120,10 @@ impl Workspace {
         });
     }
 
+    fn view_live(&mut self, _: &ViewLive, _: &mut Window, cx: &mut Context<Self>) {
+        self.set_view_mode(ViewMode::Live, cx);
+    }
+
     fn view_source(&mut self, _: &ViewSource, _: &mut Window, cx: &mut Context<Self>) {
         self.set_view_mode(ViewMode::Source, cx);
     }
@@ -134,9 +138,10 @@ impl Workspace {
 
     fn cycle_view_mode(&mut self, _: &CycleViewMode, _: &mut Window, cx: &mut Context<Self>) {
         let next = match SettingsStore::get(cx).view_mode {
-            ViewMode::Source | ViewMode::Live => ViewMode::Split,
+            ViewMode::Live => ViewMode::Source,
+            ViewMode::Source => ViewMode::Split,
             ViewMode::Split => ViewMode::Preview,
-            ViewMode::Preview => ViewMode::Source,
+            ViewMode::Preview => ViewMode::Live,
         };
         self.set_view_mode(next, cx);
     }
@@ -291,6 +296,7 @@ impl Render for Workspace {
             .on_action(cx.listener(Self::toggle_sidebar))
             .on_action(cx.listener(Self::rename_selection))
             .on_action(cx.listener(Self::delete_selection))
+            .on_action(cx.listener(Self::view_live))
             .on_action(cx.listener(Self::view_source))
             .on_action(cx.listener(Self::view_split))
             .on_action(cx.listener(Self::view_preview))

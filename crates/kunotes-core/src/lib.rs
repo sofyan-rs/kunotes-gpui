@@ -9,6 +9,7 @@ pub mod error;
 pub mod format;
 pub mod fs_ops;
 pub mod line_ending;
+pub mod live;
 pub mod names;
 pub mod node;
 pub mod paths;

@@ -23,6 +23,7 @@ gpui_kit::assets::icon_assets!(
         List,
         ListOrdered,
         NotebookPen,
+        PenLine,
         Pin,
         Quote,
         SquareCode,

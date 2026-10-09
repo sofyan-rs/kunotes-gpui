@@ -1,4 +1,4 @@
-//! The Source / Split / Preview switch in the editor header: a segmented control
+//! The Live / Source / Split / Preview switch in the editor header: a segmented control
 //! with a muted track and the active mode raised on top of it.
 
 use gpui_kit::assets::IconName;
@@ -11,11 +11,17 @@ use gpui_kit::{
 };
 use kunotes_core::settings::ViewMode;
 
-use crate::actions::{ViewPreview, ViewSource, ViewSplit, WORKSPACE};
+use crate::actions::{ViewLive, ViewPreview, ViewSource, ViewSplit, WORKSPACE};
 
 /// One segment: which mode it shows, its label and icon, and the action it sends.
-fn segments() -> [(ViewMode, &'static str, IconName, Box<dyn Action>); 3] {
+fn segments() -> [(ViewMode, &'static str, IconName, Box<dyn Action>); 4] {
     [
+        (
+            ViewMode::Live,
+            "Live",
+            IconName::PenLine,
+            Box::new(ViewLive),
+        ),
         (
             ViewMode::Source,
             "Source",
@@ -43,7 +49,7 @@ const TRACK_PADDING: f32 = 3.;
 /// corners are concentric and the gap looks even all the way around.
 const SEGMENT_RADIUS: f32 = 5.;
 
-/// Clicking a segment sends the same action as its shortcut (⌘/Ctrl+2/3/4),
+/// Clicking a segment sends the same action as its shortcut (⌘/Ctrl+1/2/3/4),
 /// so the workspace handles all three ways of switching in one place.
 pub fn render(active: ViewMode, cx: &App) -> impl IntoElement {
     let theme = cx.theme();

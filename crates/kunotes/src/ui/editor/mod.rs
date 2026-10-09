@@ -7,6 +7,9 @@
 #[cfg(test)]
 mod editor_tests;
 mod formatter_bar;
+mod markdown_style;
+
+use markdown_style::{MarkdownStyle, highlighter_factory};
 mod preview;
 mod status_bar;
 mod view_mode_switch;
@@ -56,6 +59,8 @@ pub struct EditorPane {
     can_save: bool,
     /// True when the editor has changes that aren't on disk yet.
     dirty: bool,
+    /// How the text is styled right now (Live or Source).
+    style: MarkdownStyle,
     save_task: Option<Task<()>>,
     /// The text the preview shows (updated a little behind the editor while typing).
     preview_text: SharedString,
@@ -112,14 +117,18 @@ impl EditorPane {
             can_save,
         } = note;
 
+        let style = markdown_style_for(SettingsStore::get(cx).view_mode, MarkdownStyle::Live);
         let editor = cx.new(|cx| {
-            EditorState::new(window, cx)
+            let mut state = EditorState::new(window, cx)
                 .language("markdown")
                 .line_number(false)
                 .folding(false) // code folding doesn't suit prose
                 .soft_wrap(true)
                 .placeholder("Start writing…")
-                .default_value(text.clone())
+                .default_value(text.clone());
+            // Our own markdown styling (see `markdown_style.rs`) instead of the built-in one.
+            state.set_highlighter_factory(highlighter_factory(style), cx);
+            state
         });
 
         let subscriptions = vec![
@@ -130,6 +139,8 @@ impl EditorPane {
             }),
             // Cursor moves don't send an event, but they do notify; redraw the status bar.
             cx.observe(&editor, |_, _, cx| cx.notify()),
+            // Switching between Live and Source changes how the text is styled.
+            cx.observe_global::<SettingsStore>(|pane, cx| pane.sync_markdown_style(cx)),
         ];
 
         EditorPane {
@@ -138,6 +149,7 @@ impl EditorPane {
             line_ending,
             can_save,
             dirty: false,
+            style,
             save_task: None,
             preview_text: text.clone().into(),
             refresh_task: None,
@@ -187,6 +199,21 @@ impl EditorPane {
             self.schedule_save(cx);
         }
         cx.notify();
+    }
+
+    // ----- Live / Source styling -----
+
+    /// Restyles the text when the view mode switches between Live and Source.
+    /// (Preview hides the editor, so it keeps whatever style it had.)
+    fn sync_markdown_style(&mut self, cx: &mut Context<Self>) {
+        let style = markdown_style_for(SettingsStore::get(cx).view_mode, self.style);
+        if style != self.style {
+            self.style = style;
+            self.editor.update(cx, |state, cx| {
+                state.set_highlighter_factory(highlighter_factory(style), cx);
+            });
+            cx.notify();
+        }
     }
 
     // ----- Saving -----
@@ -331,24 +358,28 @@ impl EditorPane {
             .child(view_mode_switch::render(mode, cx))
     }
 
-    fn render_editor(&self) -> AnyElement {
-        Editor::new(&self.editor)
+    fn render_editor(&self, cx: &App) -> AnyElement {
+        let editor = Editor::new(&self.editor)
             .bordered(false)
             .readonly(!self.can_save)
             .size_full()
             .px_6()
-            .py_4()
-            .text_size(px(15.))
-            .into_any_element()
+            .py_4();
+        match self.style {
+            // Live reads like a document: the normal UI font, a bit larger.
+            MarkdownStyle::Live => editor
+                .font_family(cx.theme().font_family.clone())
+                .text_size(px(16.)),
+            // Source stays monospace, like a code editor.
+            MarkdownStyle::Source => editor.text_size(px(15.)),
+        }
+        .into_any_element()
     }
 }
 
 impl Render for EditorPane {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let mode = match SettingsStore::get(cx).view_mode {
-            ViewMode::Live => ViewMode::Source, // Live mode arrives in Phase 9
-            mode => mode,
-        };
+        let mode = SettingsStore::get(cx).view_mode;
         let (line, column) = {
             let editor = self.editor.read(cx);
             cursor::line_col(&editor.value(), editor.cursor())
@@ -357,10 +388,10 @@ impl Render for EditorPane {
         let body: AnyElement = match mode {
             ViewMode::Preview => preview::render(self.preview_text.clone()).into_any_element(),
             ViewMode::Split => h_resizable("editor-split")
-                .child(resizable_panel().child(self.render_editor()))
+                .child(resizable_panel().child(self.render_editor(cx)))
                 .child(resizable_panel().child(preview::render(self.preview_text.clone())))
                 .into_any_element(),
-            _ => self.render_editor(),
+            ViewMode::Live | ViewMode::Source => self.render_editor(cx),
         };
 
         v_flex()
@@ -378,5 +409,15 @@ impl Render for EditorPane {
             })
             .child(div().flex_1().min_h_0().child(body))
             .child(status_bar::render(line, column, self.char_count, cx))
+    }
+}
+
+/// The editor styling for a view mode. Preview doesn't show the editor, so it
+/// keeps `current`.
+fn markdown_style_for(mode: ViewMode, current: MarkdownStyle) -> MarkdownStyle {
+    match mode {
+        ViewMode::Live => MarkdownStyle::Live,
+        ViewMode::Source | ViewMode::Split => MarkdownStyle::Source,
+        ViewMode::Preview => current,
     }
 }

@@ -335,7 +335,7 @@ A new `EditorPane` entity is created whenever `selected_file` changes, so per-fi
 
 - **One buffer, many views:** the markdown text is the only model. Every mode reads and writes the same string, so switching modes never changes the file. The cursor/selection offset carries over when switching between Live and Source.
 - **Source styling:** monospace 15px, soft wrap, ~25px padding, no line numbers, markdown highlighting via the `tree-sitter-markdown` feature.
-- **Default mode:** Live once Live stage A ships (PLAN Phase 9). Until then the default is Source.
+- **Default mode:** Live.
 - **Status bar** (`StatusBar` component): left `Ln {line}, Col {col}` (1-based, from the cursor offset via `kunotes_core::cursor`), right `{n} characters` (grapheme count). Monospace 11px.
 - **Title:** the window title and the centered title-bar text show the file name without `.md`.
 
@@ -403,13 +403,14 @@ Live mode is a "realtime formatter", in the style of Obsidian Live Preview or Ty
 
 It ships in two stages.
 
-#### Stage A: styled source (PLAN Phase 9)
+#### Stage A: styled source (done)
 
-- Uses the **unstyled** `gpui_base::input::Editor` over an `EditorState`, with a proportional UI font. The styled `Editor` component can't be used here because it forces the global highlight theme, which would also restyle Source mode.
-- A custom highlight theme for the markdown tree-sitter captures: headings bold and accent-colored, `**bold**` bold, `*italic*` italic, inline code monospace with a muted background, links accent-colored, and markers (`#`, `**`, `*`, `` ` ``, `>`, `-`, `[ ]`) dimmed.
-- Highlight styles come from a custom `HighlightStyleResolver` passed through `set_editor_style`, which allows color, weight, italic, and background per capture.
-- Limits: markers stay visible and every line keeps the same font size (GPUI highlight styles have no font size), so headings are bold and colored but not bigger.
-- Low effort. Gives a usable formatted writing view early.
+- One highlighter drives **both** Live and Source: `ui/editor/markdown_style.rs` implements gpui-base's `InputHighlighter` trait and is installed with `EditorState::set_highlighter_factory`. It replaces the built-in tree-sitter markdown highlighter, which can't be restored once replaced (its factory is crate-private).
+- The parts of the note come from `kunotes_core::live::spans`: a single-pass, line-by-line scan (headings, bold/italic, inline code, links, list markers and task boxes, quotes, fenced code, rules, and the marker characters around them). It's unit-tested, including multi-byte text and CRLF.
+- Colors come from the theme's syntax names (`title`, `emphasis.strong`, `emphasis`, `text.literal`, `link_text`, `link_uri`, `keyword`, `comment`), so light and dark both work. Font weight, italic, and underline are added on top.
+- **Live:** markers fade (`fade_out`), heading text is bold, and the editor uses the UI font at 16px. **Source:** same colors, markers fully visible, monospace at 15px.
+- Switching modes calls `set_highlighter_factory` on the same `EditorState` (via an `observe_global::<SettingsStore>` in `EditorPane`), so the buffer and the file bytes never change (tested).
+- Limit: every line keeps the same font size (GPUI highlight styles have no size), so headings are bold and colored, not larger. Stage B lifts this.
 
 #### Stage B: custom live editor (PLAN Phase 10)
 

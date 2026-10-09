@@ -156,7 +156,40 @@ fn shortcuts_switch_view_modes(cx: &mut TestAppContext) {
     in_window(&s, cx, |window, cx| window.press("secondary-4", cx));
     assert_eq!(mode(cx), ViewMode::Preview);
     in_window(&s, cx, |window, cx| window.press("secondary-e", cx));
+    assert_eq!(mode(cx), ViewMode::Live, "cycling wraps around to Live");
+    in_window(&s, cx, |window, cx| window.press("secondary-2", cx));
     assert_eq!(mode(cx), ViewMode::Source);
+    in_window(&s, cx, |window, cx| window.press("secondary-1", cx));
+    assert_eq!(mode(cx), ViewMode::Live);
+}
+
+#[gpui_kit::test]
+fn live_is_the_default_and_switching_modes_never_changes_the_file(cx: &mut TestAppContext) {
+    let s = setup(cx);
+    let mode = |cx: &mut TestAppContext| cx.read(|cx| SettingsStore::get(cx).view_mode);
+    assert_eq!(mode(cx), ViewMode::Live);
+
+    let note = s.path("Rich.md");
+    let original = "# Title\n\nSome **bold**, *italic*, `code` and [a link](https://x.dev).\n\n- [ ] task\n> quote\n";
+    fs::write(&note, original).unwrap();
+    open_note(&s, cx, "Rich.md");
+    for key in [
+        "secondary-2",
+        "secondary-1",
+        "secondary-3",
+        "secondary-4",
+        "secondary-1",
+    ] {
+        in_window(&s, cx, |window, cx| window.press(key, cx));
+    }
+    wait(cx, 1000);
+
+    assert_eq!(editor_text(&s, cx), original);
+    assert_eq!(
+        fs::read_to_string(&note).unwrap(),
+        original,
+        "styling never writes"
+    );
 }
 
 #[gpui_kit::test]

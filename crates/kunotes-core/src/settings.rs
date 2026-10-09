@@ -13,10 +13,10 @@ use crate::fs_ops::atomic_write;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum ViewMode {
-    /// Formatted while typing (Phase 9+).
+    /// Formatted while typing: markers dimmed, headings and emphasis styled.
+    #[default]
     Live,
     /// Raw markdown with syntax highlighting.
-    #[default]
     Source,
     /// Source and preview side by side.
     Split,
@@ -99,10 +99,10 @@ mod tests {
     use super::*;
 
     #[test]
-    fn defaults_show_sidebar_in_source_mode() {
+    fn defaults_show_sidebar_in_live_mode() {
         let settings = Settings::default();
         assert!(settings.sidebar_visible);
-        assert_eq!(settings.view_mode, ViewMode::Source);
+        assert_eq!(settings.view_mode, ViewMode::Live);
         assert_eq!(settings.last_vault, None);
     }
 
