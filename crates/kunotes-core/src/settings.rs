@@ -48,6 +48,8 @@ pub struct Settings {
     /// The tabs open in `last_vault`, in order, and which one was active.
     pub open_tabs: Vec<SavedTab>,
     pub active_tab: Option<usize>,
+    /// Vaults with git sync turned on (the remote itself is in each vault's `.git`).
+    pub synced_vaults: Vec<PathBuf>,
 }
 
 impl Default for Settings {
@@ -59,6 +61,7 @@ impl Default for Settings {
             sidebar_visible: true,
             open_tabs: Vec::new(),
             active_tab: None,
+            synced_vaults: Vec::new(),
         }
     }
 }

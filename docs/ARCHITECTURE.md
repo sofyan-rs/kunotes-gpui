@@ -2,7 +2,7 @@
 
 KuNotes is a minimal, cross-platform (macOS, Windows, Linux) markdown vault app. The Linux target is **Fedora** (Workstation, GNOME/Wayland first; KDE spin second). It uses Rust, [GPUI](https://www.gpui.rs/), and [GPUI Kit](https://gpui-kit.com/) (`gpui-kit` crate, which bundles GPUI, GPUI Base, the component library, and default icons).
 
-Scope: **open a folder, browse it, edit markdown.** There are no wikilinks, backlinks, graph view, tags, or plugins. Files on disk are the only source of truth, so there is no database, sync service, or lock-in.
+Scope: **open a folder, browse it, edit markdown.** There are no wikilinks, backlinks, graph view, tags, or plugins. Files on disk are the only source of truth, so there is no database or lock-in. Syncing is optional and uses plain git with a remote the user owns (§6.11).
 
 ---
 
@@ -16,10 +16,10 @@ Scope: **open a folder, browse it, edit markdown.** There are no wikilinks, back
 - Keep logic testable: pure logic lives in a crate with no GPUI dependency and has unit tests.
 
 ### Non-goals (for now)
-- Wikilinks, backlinks, tags, graph, plugins, sync.
+- Wikilinks, backlinks, tags, graph, plugins, a KuNotes sync service (git sync with the user's own remote is in scope, §6.11).
 - Multiple windows or multiple vaults open at once.
 - Split editor groups (several tabs side by side).
-- Reloading the open editor's content when the file changes on disk (see [§7.3](#73-external-changes-to-the-open-file)).
+- Reloading the open editor's content on *every* outside change (see [§7.3](#73-external-changes-to-the-open-file)); it is reloaded after a git sync.
 
 ---
 
@@ -65,6 +65,7 @@ kunotes-gpui/
 │   │   │   ├── node.rs        # VaultNode + scan a folder into a tree
 │   │   │   ├── search.rs      # flatten files, quick-switcher filter, tree visible rows
 │   │   │   ├── fs_ops.rs      # create / rename / move / trash, atomic_write, unique names
+│   │   │   ├── git.rs         # git sync: connect, sync, conflict copies (runs `git`)
 │   │   │   ├── names.rs       # filename validation (cross-platform rules)
 │   │   │   ├── paths.rs       # relative path, breadcrumb, note title, remap after rename
 │   │   │   ├── format.rs      # formatter-bar transforms (bold, link, heading, ...)
@@ -112,6 +113,7 @@ kunotes-gpui/
 │               │   ├── view_mode_switch.rs
 │               │   └── live/          # custom Live editor: mod, keys, input, layout, style, table, element
 │               ├── editor_area/       # tabs: EditorArea (mod.rs), tab_bar.rs, tests
+│               ├── git_sync_dialog.rs # enter the remote address / turn sync off
 │               ├── quick_switcher.rs
 │               ├── quick_switcher_tests.rs
 │               ├── dialogs.rs         # delete confirmation
@@ -443,6 +445,19 @@ It shipped in two stages. Stage A (a styled gpui-kit editor with markers faded b
 
 Not done yet: page up/down, Cmd/Ctrl+click on links, laying out only visible lines for very large notes, and a manual IME check on Windows and Fedora.
 
+### 6.11 Git sync (`kunotes-core/src/git.rs`, `git_sync.rs`, `ui/git_sync_dialog.rs`, `ui/sidebar/sync_footer.rs`)
+
+Optional, per vault. The user enters a repository address (e.g. `https://github.com/you/notes.git`) in the Git Sync dialog, opened from the sidebar footer.
+
+- **Uses the installed `git`** (`std::process::Command`), not a git library: KuNotes never handles passwords or tokens; signing in is whatever git already uses (macOS Keychain, Git Credential Manager, `gh auth login`, SSH keys). Every run sets `GIT_TERMINAL_PROMPT=0` so git fails instead of waiting for a password, and errors are rewritten into plain advice (`friendly_error`). On Windows git runs with `CREATE_NO_WINDOW` (the one `cfg(windows)` outside `platform.rs`, inside `kunotes-core`). If git isn't installed, the error says so.
+- **Connect** (`git::connect`): `git init` (branch `main`) if needed, a default `.gitignore` (`.DS_Store`, `Thumbs.db`, KuNotes temp files; `.img` *is* synced), set `origin`, then a first sync that merges the remote's notes with the ones already in the folder (`--allow-unrelated-histories`). The vault is added to `Settings::synced_vaults`; the address itself lives in the vault's `.git/config`.
+- **One sync** (`git::sync`): commit everything (`add -A`), find the remote's default branch (`ls-remote --symref`), fetch, merge, push. Commits and merges never sign (`commit.gpgsign=false`) and use a stand-in identity (`KuNotes <kunotes@localhost>`) if git has none.
+- **Conflicts never lose text:** a file changed on both sides keeps this computer's version and saves the other as `Name (conflict YYYY-MM-DD).md` next to it (also for images); deleted-here/changed-there brings the file back; changed-here/deleted-there keeps it. The user gets a notification per copy.
+- **When** (`GitSync` entity, owned by `Workspace`): on opening the vault, 60 s after the last edit (`EditorAreaEvent::NoteEdited`), every 5 min, on click of the sidebar status, and on quit (commit + a push that gives up after 5 s). Only one sync runs at a time; a request during one runs right after. Open notes are saved (`EditorArea::save_all`) before every sync, and all git work runs on a background thread.
+- **After a pull**: the vault rescans, and open notes whose files changed reload (`EditorPane::reload_from_disk`) unless they have unsaved typing, which wins and is synced next time.
+- **Sidebar footer**: "Set Up Git Sync…" when off; otherwise "Synced N min ago" / "Syncing…" / "Sync failed · click to retry" (error in the tooltip) plus a gear for the dialog (change the address, Turn Off). Turning off removes the remote; the `.git` history stays.
+- Tests: `kunotes-core/tests/git.rs` syncs two vaults through a local bare repository (round trip, both-sides conflict, bad address, quit push).
+
 ---
 
 ## 7. Data integrity
@@ -556,6 +571,7 @@ A Wayland or X11 session with a working Vulkan driver (`vulkan-loader` plus Mesa
 | Quick switcher | Filter all notes by name, keyboard driven | §6.6 |
 | Tabs | Several notes open; preview tabs; pin, close variants, drag to reorder, copy path, reveal; restored on launch | §6.10 |
 | Live sync | Changes made outside the app appear in the tree | §7.2 |
+| Git sync | Optional: sync the vault with the user's git remote (auto + manual), conflicts kept as copies | §6.11 |
 | Layout | Resizable, toggleable sidebar; view mode and sidebar width remembered | §5, §4.3 |
 
 ---

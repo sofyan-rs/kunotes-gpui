@@ -12,10 +12,13 @@ gpui_kit::assets::icon_assets!(
     [
         Bold,
         Close,
+        CloudCheck,
+        CloudOff,
         Code,
         Columns2,
         Eye,
         FolderPlus,
+        GitBranch,
         Heading1,
         Heading2,
         Heading3,

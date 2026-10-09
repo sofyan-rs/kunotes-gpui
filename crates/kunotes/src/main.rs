@@ -7,6 +7,7 @@
 mod actions;
 mod app;
 mod assets;
+mod git_sync;
 mod platform;
 mod settings_store;
 mod ui;

@@ -18,8 +18,8 @@ use std::path::{Path, PathBuf};
 
 use gpui_kit::component::{ActiveTheme as _, WindowExt as _, v_flex};
 use gpui_kit::{
-    App, AppContext as _, Context, Entity, IntoElement, ParentElement as _, Render, Styled as _,
-    Subscription, Window, div,
+    App, AppContext as _, Context, Entity, EventEmitter, IntoElement, ParentElement as _, Render,
+    Styled as _, Subscription, Window, div,
 };
 use kunotes_core::settings::SavedTab;
 use kunotes_core::tabs::TabList;
@@ -28,6 +28,12 @@ use crate::settings_store::SettingsStore;
 use crate::ui::editor::{EditorEvent, EditorPane, load_note};
 use crate::ui::empty_state;
 use crate::vault_store::{VaultEvent, VaultStore};
+
+/// Something other parts of the window react to.
+pub enum EditorAreaEvent {
+    /// The text of an open note changed (git sync waits a bit, then syncs).
+    NoteEdited,
+}
 
 pub struct EditorArea {
     vault: Entity<VaultStore>,
@@ -42,6 +48,8 @@ pub struct EditorArea {
     last_active: Option<PathBuf>,
     _subscriptions: Vec<Subscription>,
 }
+
+impl EventEmitter<EditorAreaEvent> for EditorArea {}
 
 impl EditorArea {
     pub fn new(vault: Entity<VaultStore>, window: &mut Window, cx: &mut Context<Self>) -> Self {
@@ -256,6 +264,7 @@ impl EditorArea {
             cx.subscribe_in(&pane, window, |area, pane, event, window, cx| match event {
                 EditorEvent::Error(message) => window.push_notification(message.clone(), cx),
                 EditorEvent::Edited => {
+                    cx.emit(EditorAreaEvent::NoteEdited);
                     // Typing in a preview tab keeps it open.
                     let path = pane.read(cx).path().to_path_buf();
                     if let Some(index) = area.tabs.position(&path)
@@ -289,6 +298,21 @@ impl EditorArea {
     fn forget_pane(&mut self, path: &Path) {
         self.panes.remove(path);
         self.pane_subscriptions.remove(path);
+    }
+
+    /// Shows the new contents of open notes that changed on disk (after a git
+    /// sync brought in changes). Notes with unsaved typing keep it.
+    pub fn reload_from_disk(
+        &mut self,
+        paths: &[PathBuf],
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        for path in paths {
+            if let Some(pane) = self.panes.get(path) {
+                pane.update(cx, |pane, cx| pane.reload_from_disk(window, cx));
+            }
+        }
     }
 
     /// Writes every open note's unsaved changes (before quitting).

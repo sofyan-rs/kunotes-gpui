@@ -1,4 +1,5 @@
-//! The sidebar: a row of action buttons on top, the vault's file tree below.
+//! The sidebar: a row of action buttons on top, the vault's file tree below,
+//! and the git sync status at the bottom (`sync_footer.rs`).
 
 mod context_menu;
 mod file_tree;
@@ -8,6 +9,7 @@ pub use file_tree::row_id as row_id_for_tests;
 mod file_tree_tests;
 mod inline_edit;
 mod keyboard;
+mod sync_footer;
 
 use std::path::PathBuf;
 
@@ -16,24 +18,36 @@ use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::{ActiveTheme as _, Disableable as _, Sizable as _, h_flex, v_flex};
 use gpui_kit::{
     Action, AppContext as _, Context, Entity, IntoElement, ParentElement as _, Render, Styled as _,
-    Window, div,
+    Window, div, prelude::FluentBuilder as _,
 };
 
 use crate::actions::{DeleteSelection, NewFile, NewFolder, OpenVault, QuickSwitcher, WORKSPACE};
+use crate::git_sync::GitSync;
 use crate::vault_store::VaultStore;
 use file_tree::FileTree;
 
 pub struct Sidebar {
     vault: Entity<VaultStore>,
     file_tree: Entity<FileTree>,
+    git_sync: Entity<GitSync>,
 }
 
 impl Sidebar {
-    pub fn new(vault: Entity<VaultStore>, cx: &mut Context<Self>) -> Self {
+    pub fn new(
+        vault: Entity<VaultStore>,
+        git_sync: Entity<GitSync>,
+        cx: &mut Context<Self>,
+    ) -> Self {
         let file_tree = cx.new(|cx| FileTree::new(vault.clone(), cx));
         // Redraw when the vault changes (e.g. buttons become enabled).
         cx.observe(&vault, |_, _, cx| cx.notify()).detach();
-        Sidebar { vault, file_tree }
+        // Redraw the sync status when it changes.
+        cx.observe(&git_sync, |_, _, cx| cx.notify()).detach();
+        Sidebar {
+            vault,
+            file_tree,
+            git_sync,
+        }
     }
 
     /// Starts typing the name of a new note or folder in the tree, inside the
@@ -132,10 +146,14 @@ impl Render for Sidebar {
             .child(if has_vault {
                 div()
                     .flex_1()
+                    .min_h_0()
                     .child(self.file_tree.clone())
                     .into_any_element()
             } else {
                 self.render_no_vault(cx).into_any_element()
+            })
+            .when(has_vault, |sidebar| {
+                sidebar.child(sync_footer::render(&self.git_sync, cx))
             })
     }
 }

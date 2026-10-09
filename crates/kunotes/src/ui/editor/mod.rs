@@ -275,6 +275,40 @@ impl EditorPane {
         }
     }
 
+    /// The file changed on disk (e.g. a git sync brought in another computer's
+    /// edit): show the new text. Does nothing while there is unsaved typing, so
+    /// nothing typed here is lost (it gets saved and synced as usual).
+    pub fn reload_from_disk(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.dirty {
+            return;
+        }
+        let note = match load_note(self.path.clone()) {
+            Ok(note) => note,
+            Err(error) => {
+                log::warn!("couldn't reload {}: {error}", self.path.display());
+                return;
+            }
+        };
+        if note.text == self.text(cx).as_ref() {
+            return;
+        }
+        self.line_ending = note.line_ending;
+        self.can_save = note.can_save;
+        let cursor = self.cursor(cx).min(note.text.len());
+        if self.live_active {
+            self.live
+                .update(cx, |live, cx| live.set_text(&note.text, cursor, cx));
+        } else {
+            // `set_value` doesn't count as an edit, so the note isn't saved back.
+            self.editor.update(cx, |editor, cx| {
+                editor.set_value(note.text.clone(), window, cx)
+            });
+        }
+        self.set_preview_text(note.text.into(), cx);
+        self.schedule_refresh(cx);
+        cx.notify();
+    }
+
     /// The note was renamed or moved on disk; keep editing it at its new path.
     pub fn set_path(&mut self, path: PathBuf, cx: &mut Context<Self>) {
         self.path = path;

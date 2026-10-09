@@ -236,6 +236,16 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done
 
 ---
 
+## Phase 11: Git sync
+
+**Goal:** optional per-vault sync through the user's own git remote (§6.11).
+
+- [x] `kunotes-core::git`: connect (init, `.gitignore`, remote, first merge), sync (commit, fetch, merge, push), conflict copies, quit push with timeout, readable errors. Integration tests with a local bare remote.
+- [x] `GitSync` entity: sync on open, 60 s after edits, every 5 min, on click, on quit; one at a time; saves open notes first.
+- [x] Sidebar footer status + Git Sync dialog (address, turn on/off).
+- [x] Open notes reload after a pull (unsaved typing wins). UI tests.
+- [ ] Manual check with a real GitHub repo on macOS, Windows (Git Credential Manager) and Fedora.
+
 ## Feature checklist
 
 Legend: ✅ verified on that OS (UI/unit test run there, or screenshot) · 🧪 logic covered by CI tests on that OS, needs a visual check · ⬜ needs a manual check.

@@ -6,7 +6,7 @@ This file guides Claude Code (claude.ai/code) when working in this repository.
 
 KuNotes is a minimal, cross-platform (**macOS, Windows, Linux — Fedora is the Linux target**) markdown vault app in Rust. It opens a folder on disk as a "vault". Files on disk are the only source of truth, with no database. UI is built with [gpui-kit](https://gpui-kit.com/) (`gpui-kit = "0.7.1"`), which re-exports GPUI. Don't add `gpui` as a direct dependency.
 
-Scope is intentionally minimal: open a folder, browse it, edit markdown. There are no wikilinks, backlinks, tags, graph, plugins, or sync. (Tabs are in scope; split editor groups are not.) Push back on scope creep.
+Scope is intentionally minimal: open a folder, browse it, edit markdown. There are no wikilinks, backlinks, tags, graph, or plugins. (Tabs are in scope; split editor groups are not. Optional git sync with the user's own remote is in scope, using the installed `git`; no KuNotes sync service.) Push back on scope creep.
 
 **Status:** docs-first. Check `docs/implementation/PLAN.md` for the current phase before writing code, and tick checkboxes there as items land.
 
@@ -42,10 +42,11 @@ Rust ≥ 1.92 (required by gpui-kit). Windows needs the MSVC toolchain. Fedora n
 
 ## Layout
 
-- `crates/kunotes-core/`: **pure logic, no gpui.** Covers scan (`node.rs`), file ops and `atomic_write` (`fs_ops.rs`), filename validation (`names.rs`), relative path and breadcrumb (`paths.rs`), formatter transforms (`format.rs`), line/col and char count (`cursor.rs`), `\n`/`\r\n` preservation (`line_ending.rs`), file flatten/filter and tree `visible_rows` (`search.rs`), `Settings` (`settings.rs`), and Live-mode logic (`live.rs` spans, `live_view.rs` per-line drawing and position mapping, `live_buffer.rs` text/selection/undo, `live_table.rs` tables). Anything that can be written without gpui goes here, with tests.
+- `crates/kunotes-core/`: **pure logic, no gpui.** Covers scan (`node.rs`), file ops and `atomic_write` (`fs_ops.rs`), filename validation (`names.rs`), relative path and breadcrumb (`paths.rs`), formatter transforms (`format.rs`), line/col and char count (`cursor.rs`), `\n`/`\r\n` preservation (`line_ending.rs`), file flatten/filter and tree `visible_rows` (`search.rs`), `Settings` (`settings.rs`), git sync (`git.rs`, runs the installed `git`), and Live-mode logic (`live.rs` spans, `live_view.rs` per-line drawing and position mapping, `live_buffer.rs` text/selection/undo, `live_table.rs` tables). Anything that can be written without gpui goes here, with tests.
 - `crates/kunotes/`: the GPUI app.
   - `vault_store.rs`: the `VaultStore` entity, the single source of truth, which emits `VaultEvent`.
   - `watcher.rs`: `notify` events go through a channel to `refresh`.
+  - `git_sync.rs`: the `GitSync` entity (when to sync, status); UI in `ui/git_sync_dialog.rs` and `ui/sidebar/sync_footer.rs`.
   - `platform.rs`: the **only** place for `#[cfg(target_os)]` and OS wording.
   - `ui/`: views grouped by feature: `workspace.rs`, `title_bar.rs`, `sidebar/` (`mod.rs`, `file_tree.rs`, `inline_edit.rs`, `keyboard.rs`, `context_menu.rs`), `editor/` (`mod.rs` = EditorPane, `saving.rs` = autosave + preview refresh, `formatting.rs` = toolbar commands/images/task toggle, `markdown_style.rs` = Source styling, `view_mode_switch.rs`, `formatter_bar.rs`, `preview.rs`, `status_bar.rs`, `edit_menu.rs` = right-click menu of Live and Source, `live/` = custom Live editor: `mod.rs`, `keys.rs`, `input.rs`, `layout.rs`, `style.rs`, `table.rs`, `element.rs`), `editor_area/` (tabs: `mod.rs` = EditorArea, `tab_bar.rs`), `quick_switcher.rs`, `dialogs.rs`, `empty_state.rs`. Tab rules are pure in `kunotes-core/src/tabs.rs`.
 

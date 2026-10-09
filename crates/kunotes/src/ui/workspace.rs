@@ -15,6 +15,7 @@ use crate::actions::{
     QuickSwitcher, RenameSelection, TogglePinTab, ToggleSidebar, ViewLive, ViewPreview, ViewSource,
     ViewSplit, WORKSPACE,
 };
+use crate::git_sync::{GitSync, GitSyncEvent};
 use crate::settings_store::SettingsStore;
 use crate::ui::editor_area::EditorArea;
 use crate::ui::{dialogs, quick_switcher, sidebar::Sidebar, title_bar};
@@ -29,6 +30,8 @@ pub struct Workspace {
     sidebar: Entity<Sidebar>,
     /// The tabs and the open notes' editors.
     editor_area: Entity<EditorArea>,
+    /// Keeps the vault in step with a git remote, if set up.
+    git_sync: Entity<GitSync>,
     focus_handle: FocusHandle,
     /// Kept alive so our listeners keep working; dropping one unsubscribes it.
     _subscriptions: Vec<Subscription>,
@@ -44,8 +47,9 @@ impl Workspace {
             vault.disable_live_sync();
             vault
         });
-        let sidebar = cx.new(|cx| Sidebar::new(vault.clone(), cx));
         let editor_area = cx.new(|cx| EditorArea::new(vault.clone(), window, cx));
+        let git_sync = cx.new(|cx| GitSync::new(vault.clone(), editor_area.clone(), cx));
+        let sidebar = cx.new(|cx| Sidebar::new(vault.clone(), git_sync.clone(), cx));
 
         let subscriptions = vec![
             // Keep the window title in step with the vault and the active tab.
@@ -57,11 +61,37 @@ impl Workspace {
                 this.update_window_title(window, cx);
                 cx.notify();
             }),
-            // Save every open note before the app quits.
+            // Save every open note before the app quits (and commit/push them).
             cx.on_app_quit(|this, cx| {
                 this.save_open_notes(cx);
+                this.git_sync.update(cx, |sync, cx| sync.finish_on_quit(cx));
                 async {}
             }),
+            // After a git sync: show notes that changed, and mention conflict copies.
+            cx.subscribe_in(
+                &git_sync,
+                window,
+                |this, _, event, window, cx| match event {
+                    GitSyncEvent::Synced(report) => {
+                        this.editor_area.update(cx, |area, cx| {
+                            area.reload_from_disk(&report.changed, window, cx)
+                        });
+                        for copy in &report.conflicts {
+                            let name = copy
+                                .file_name()
+                                .map(|name| name.to_string_lossy().into_owned());
+                            window.push_notification(
+                            format!(
+                                "A note changed on two computers. Both versions were kept: “{}”.",
+                                name.unwrap_or_default()
+                            ),
+                            cx,
+                        );
+                        }
+                    }
+                    GitSyncEvent::Message(message) => window.push_notification(message.clone(), cx),
+                },
+            ),
             // Show file operation errors.
             cx.subscribe_in(&vault, window, |_, _, event, window, cx| {
                 if let VaultEvent::Error(message) = event {
@@ -92,6 +122,7 @@ impl Workspace {
             vault,
             sidebar,
             editor_area,
+            git_sync,
             focus_handle,
             _subscriptions: subscriptions,
         }

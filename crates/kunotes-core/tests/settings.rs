@@ -24,6 +24,7 @@ fn settings_round_trip_and_fallback() {
             preview: false,
         }],
         active_tab: Some(0),
+        synced_vaults: vec![dir.path().to_path_buf()],
     };
     settings.save_to(&path).unwrap();
     assert_eq!(Settings::load_from(&path), settings);

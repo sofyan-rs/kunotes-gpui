@@ -8,6 +8,7 @@ pub mod cursor;
 pub mod error;
 pub mod format;
 pub mod fs_ops;
+pub mod git;
 pub mod line_ending;
 pub mod live;
 pub mod live_buffer;

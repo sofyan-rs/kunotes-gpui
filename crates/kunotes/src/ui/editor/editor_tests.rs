@@ -368,3 +368,52 @@ fn new_toolbar_buttons_format_the_selection(cx: &mut TestAppContext) {
     in_window(&s, cx, |window, cx| window.click("format-table", cx));
     assert!(editor_text(&s, cx).contains("| Column 1 | Column 2 |\n| --- | --- |"));
 }
+
+#[gpui_kit::test]
+fn a_note_changed_on_disk_reloads_unless_it_has_unsaved_typing(cx: &mut TestAppContext) {
+    let s = setup(cx);
+    open_note(&s, cx, "Welcome.md");
+    let reload = |s: &Setup, cx: &mut TestAppContext| {
+        let area = s
+            .workspace
+            .read_with(cx, |workspace, _| workspace.editor_area());
+        let paths = vec![s.path("Welcome.md")];
+        cx.update_window(s.window, |_, window, cx| {
+            area.update(cx, |area, cx| area.reload_from_disk(&paths, window, cx));
+        })
+        .unwrap();
+    };
+
+    // Changed elsewhere (e.g. by a git sync): the editor shows the new text.
+    fs::write(s.path("Welcome.md"), "# Welcome\nfrom another computer\n").unwrap();
+    reload(&s, cx);
+    assert_eq!(editor_text(&s, cx), "# Welcome\nfrom another computer\n");
+    wait(cx, 1000);
+    assert_eq!(
+        fs::read_to_string(s.path("Welcome.md")).unwrap(),
+        "# Welcome\nfrom another computer\n",
+        "reloading doesn't write anything"
+    );
+
+    // With unsaved typing, the typing wins (it's saved and synced next).
+    type_at_end(&s, cx, "mine");
+    fs::write(s.path("Welcome.md"), "theirs\n").unwrap();
+    reload(&s, cx);
+    assert_eq!(
+        editor_text(&s, cx),
+        "# Welcome\nfrom another computer\nmine"
+    );
+}
+
+#[gpui_kit::test]
+fn git_sync_can_be_set_up_from_the_sidebar(cx: &mut TestAppContext) {
+    let s = setup(cx);
+    in_window(&s, cx, |window, cx| window.click("git-sync-setup", cx));
+    cx.run_until_parked();
+    in_window(&s, cx, |window, _| {
+        assert!(
+            window.try_find("git-sync-connect").is_some(),
+            "the dialog opens"
+        );
+    });
+}

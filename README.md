@@ -2,7 +2,7 @@
 
 A minimal, cross-platform markdown vault app, in the style of Obsidian but without Electron. It's built in Rust with [GPUI](https://www.gpui.rs/) and [GPUI Kit](https://gpui-kit.com/), and runs on **macOS, Windows, and Linux (Fedora)** from one codebase.
 
-Open any folder on disk as a "vault", browse it in a sidebar, and edit markdown files directly. Files on disk are the only source of truth, so there is no database, sync service, or lock-in.
+Open any folder on disk as a "vault", browse it in a sidebar, and edit markdown files directly. Files on disk are the only source of truth, so there is no database or lock-in. Optionally, a vault can sync through your own git repository.
 
 > **Status:** planning. See [docs/implementation/PLAN.md](docs/implementation/PLAN.md).
 
@@ -22,6 +22,7 @@ Open any folder on disk as a "vault", browse it in a sidebar, and edit markdown 
 - **Tabs** like VS Code: preview tabs, pin, close others/to the right/saved/all, drag to reorder, copy path, reveal in file manager; reopened on launch.
 - **Quick switcher** (`Ctrl/⌘+K`): filter all notes by name and open one from the keyboard.
 - **Live external sync:** changes made outside the app show up automatically.
+- **Git sync (optional):** enter a repository address (e.g. on GitHub) and the vault syncs automatically. Uses the git installed on your computer and its sign-in; a note changed on two computers keeps both versions.
 - **Remembers your last vault** across launches.
 
 ## Requirements
@@ -47,4 +48,4 @@ cargo test --workspace
 
 ## Scope
 
-This is intentionally minimal: no wikilinks, backlinks, graph view, tags, or plugins. The whole app is "open a folder, browse it, edit markdown."
+This is intentionally minimal: no wikilinks, backlinks, graph view, tags, or plugins. Sync is optional and only through your own git repository. The whole app is "open a folder, browse it, edit markdown."
