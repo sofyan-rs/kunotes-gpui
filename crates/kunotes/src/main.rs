@@ -1,6 +1,9 @@
 //! KuNotes entry point: sets up logging and starts the GPUI app.
 //! Everything else happens in `app.rs`.
 
+// Release builds on Windows are GUI apps: don't open a console window next to KuNotes.
+#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+
 mod actions;
 mod app;
 mod assets;

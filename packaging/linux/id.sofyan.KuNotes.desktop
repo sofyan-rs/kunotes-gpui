@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=KuNotes
+GenericName=Markdown Notes
+Comment=A minimal markdown vault app
+Exec=kunotes
+Icon=kunotes
+Terminal=false
+Categories=Office;TextEditor;Utility;
+Keywords=notes;markdown;vault;
+StartupWMClass=id.sofyan.KuNotes

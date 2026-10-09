@@ -180,17 +180,16 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done
 - [ ] HiDPI / fractional scaling on Windows and Linux (needs real machines).
 - [-] Not doing: a white icon on the selected row. gpui-kit's selection is a light tint in light mode, where white icons would vanish. The colored icons stay readable in both themes.
 
-## Phase 8: Packaging and release
+## Phase 8: Packaging and release ✅ (signing pending)
 
-- [x] App icon: 1024px master at `assets/icon/kunotes.png`. `packaging/make_icons.sh` (macOS: `sips` + `iconutil`, plus `make_ico.py` with only the stdlib) generates `packaging/macos/KuNotes.icns`, `packaging/windows/kunotes.ico` (16–256), and `packaging/linux/icons/hicolor/<size>/apps/kunotes.png` (16–512).
-- [ ] Use the icons: macOS bundle, Windows exe resource, Linux `.desktop` + `.rpm`.
-- [ ] macOS: `.app` bundle (`cargo-bundle` or a script), bundle ID `id.sofyan.KuNotes`, `.dmg`. Codesign + notarize (optional at first).
-- [ ] Windows: embed the icon + manifest (`winresource`), produce a `.msi` (`cargo-wix`) or zip.
-- [ ] Linux (Fedora): `.desktop` file + icon, `.rpm` (`cargo-generate-rpm`). Flatpak optional later.
-- [ ] GitHub Actions release workflow on tag `v*` that uploads artifacts for all three OSes.
+- [x] App icon: 1024px master at `assets/icon/kunotes.png`. `packaging/make_icons.sh` generates `.icns`, `.ico` (16–256), and hicolor PNGs (16–512).
+- [x] macOS: `packaging/macos/bundle.sh` → `KuNotes.app` (Info.plist with bundle ID `id.sofyan.KuNotes`, icon, ad-hoc signature) + `KuNotes-<version>-<arch>.dmg` with an Applications shortcut. Verified locally: Finder shows the icon and the bundle launches.
+- [ ] macOS: Developer ID signing + notarization (needs an Apple Developer account). Until then, other Macs need right-click → Open the first time. Universal (arm64 + x86_64) build later if needed.
+- [x] Windows: icon and version info embedded in `kunotes.exe` (`build.rs` + `winresource`). Release builds have no console window. CI zips it as `KuNotes-windows-x64.zip`.
+- [ ] Windows: `.msi` installer (needs the WiX toolset on the runner) and code signing.
+- [x] Linux (Fedora): `packaging/linux/id.sofyan.KuNotes.desktop` + icons + binary packed by `cargo generate-rpm -p crates/kunotes` (metadata in `crates/kunotes/Cargo.toml`, requires `vulkan-loader`). The window `app_id` is `id.sofyan.KuNotes`, so Wayland matches the window to the `.desktop` file. Asset layout verified locally.
+- [x] `.github/workflows/release.yml`: a `v*` tag builds the `.dmg`, `.zip`, and `.rpm`, then publishes a GitHub Release with notes. Running it by hand builds artifacts only.
 - [ ] Root `README.md` with screenshots from each OS.
-
----
 
 ## Phase 9: Live mode stage A, styled source (v1.5)
 

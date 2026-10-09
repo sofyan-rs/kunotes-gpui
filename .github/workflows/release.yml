@@ -1,0 +1,84 @@
+name: Release
+
+# Push a tag like `v0.1.0` to build all packages and publish a GitHub Release.
+# "Run workflow" (manual) builds the same packages as downloadable artifacts only.
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  macos:
+    name: macOS (.dmg)
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@1.99.0
+      - uses: Swatinem/rust-cache@v2
+      - run: packaging/macos/bundle.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos
+          path: target/release/bundle/macos/*.dmg
+
+  windows:
+    name: Windows (.zip)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@1.99.0
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo build --release -p kunotes
+      - name: Zip the app
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force dist | Out-Null
+          Copy-Item target/release/kunotes.exe dist/KuNotes.exe
+          Compress-Archive -Path dist/KuNotes.exe -DestinationPath KuNotes-windows-x64.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows
+          path: KuNotes-windows-x64.zip
+
+  fedora:
+    name: Fedora (.rpm)
+    runs-on: ubuntu-latest
+    container: fedora:latest
+    steps:
+      - name: Install system dependencies
+        run: |
+          dnf install -y git gcc gcc-c++ clang cmake pkgconf-pkg-config \
+            fontconfig-devel wayland-devel webkit2gtk4.1-devel \
+            libxkbcommon-x11-devel libxcb-devel libX11-devel \
+            openssl-devel libzstd-devel vulkan-loader-devel
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@1.99.0
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo build --release -p kunotes
+      - run: cargo install cargo-generate-rpm --locked
+      - run: cargo generate-rpm -p crates/kunotes
+      - uses: actions/upload-artifact@v4
+        with:
+          name: fedora
+          path: target/generate-rpm/*.rpm
+
+  publish:
+    name: Publish GitHub Release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [macos, windows, fedora]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
+          generate_release_notes: true

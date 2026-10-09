@@ -7,6 +7,10 @@ use crate::actions::{self, Quit};
 use crate::settings_store::SettingsStore;
 use crate::ui::workspace::Workspace;
 
+/// Identifies the app to the OS. On Linux (Wayland) it must match the `.desktop`
+/// file name, so the window gets the right icon and title in the dock/taskbar.
+pub const APP_ID: &str = "id.sofyan.KuNotes";
+
 /// Called once by GPUI when the app starts.
 pub fn run(cx: &mut App) {
     gpui_kit::init(cx);
@@ -30,6 +34,7 @@ pub fn run(cx: &mut App) {
             cx,
         ))),
         window_min_size: Some(size(px(640.), px(400.))),
+        app_id: Some(APP_ID.to_string()),
         ..TitleBar::window_options()
     };
     gpui_kit::open_window(options, cx, |window, cx| {

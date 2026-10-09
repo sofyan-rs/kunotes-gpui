@@ -54,6 +54,18 @@ The first build is slow because GPUI is large. Framework crates are built at `op
 
 A test vault: open `fixtures/sample-vault/`. Its `Example.md` uses every markdown element the preview must render.
 
+### Packaging
+
+| OS | Command | Output |
+|---|---|---|
+| macOS | `packaging/macos/bundle.sh` | `target/release/bundle/macos/KuNotes.app` + `.dmg` |
+| Windows | `cargo build --release -p kunotes` | `target/release/kunotes.exe` (icon embedded) |
+| Fedora | `cargo build --release -p kunotes && cargo generate-rpm -p crates/kunotes` (`cargo install cargo-generate-rpm` once) | `target/generate-rpm/*.rpm` |
+
+The icon master is `assets/icon/kunotes.png`. After changing it, run `packaging/make_icons.sh` (macOS) and commit the regenerated files.
+
+**Releasing:** push a tag such as `git tag v0.1.0 && git push origin v0.1.0`. The Release workflow builds all three packages and publishes a GitHub Release. To test packaging without releasing, run the workflow manually from the Actions tab and download the artifacts.
+
 ---
 
 ## 3. Project structure

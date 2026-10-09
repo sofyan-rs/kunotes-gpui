@@ -18,7 +18,31 @@ notify.workspace = true
 notify-debouncer-full.workspace = true
 futures.workspace = true
 
+[target.'cfg(windows)'.build-dependencies]
+# Embeds the app icon into kunotes.exe (see build.rs).
+winresource = "0.1"
+
 [dev-dependencies]
 # `test-support` turns on gpui-kit's headless UI test harness (click, press, drag).
 gpui-kit = { workspace = true, features = ["test-support"] }
 tempfile.workspace = true
+
+# Fedora package: `cargo generate-rpm -p crates/kunotes` (after a release build).
+[package.metadata.generate-rpm]
+name = "kunotes"
+summary = "A minimal, cross-platform markdown vault app"
+license = "Apache-2.0"
+assets = [
+    { source = "target/release/kunotes", dest = "/usr/bin/kunotes", mode = "755" },
+    { source = "packaging/linux/id.sofyan.KuNotes.desktop", dest = "/usr/share/applications/id.sofyan.KuNotes.desktop", mode = "644" },
+    { source = "packaging/linux/icons/hicolor/16x16/apps/kunotes.png", dest = "/usr/share/icons/hicolor/16x16/apps/kunotes.png", mode = "644" },
+    { source = "packaging/linux/icons/hicolor/32x32/apps/kunotes.png", dest = "/usr/share/icons/hicolor/32x32/apps/kunotes.png", mode = "644" },
+    { source = "packaging/linux/icons/hicolor/48x48/apps/kunotes.png", dest = "/usr/share/icons/hicolor/48x48/apps/kunotes.png", mode = "644" },
+    { source = "packaging/linux/icons/hicolor/64x64/apps/kunotes.png", dest = "/usr/share/icons/hicolor/64x64/apps/kunotes.png", mode = "644" },
+    { source = "packaging/linux/icons/hicolor/128x128/apps/kunotes.png", dest = "/usr/share/icons/hicolor/128x128/apps/kunotes.png", mode = "644" },
+    { source = "packaging/linux/icons/hicolor/256x256/apps/kunotes.png", dest = "/usr/share/icons/hicolor/256x256/apps/kunotes.png", mode = "644" },
+    { source = "packaging/linux/icons/hicolor/512x512/apps/kunotes.png", dest = "/usr/share/icons/hicolor/512x512/apps/kunotes.png", mode = "644" },
+]
+
+[package.metadata.generate-rpm.requires]
+vulkan-loader = "*"
