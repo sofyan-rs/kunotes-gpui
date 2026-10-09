@@ -37,6 +37,12 @@ fn segments() -> [(ViewMode, &'static str, IconName, Box<dyn Action>); 3] {
     ]
 }
 
+/// Space between the track's edge and the segments, the same on every side.
+const TRACK_PADDING: f32 = 3.;
+/// Segment corner radius. The track's radius is this plus the padding, so the
+/// corners are concentric and the gap looks even all the way around.
+const SEGMENT_RADIUS: f32 = 5.;
+
 /// Clicking a segment sends the same action as its shortcut (⌘/Ctrl+2/3/4),
 /// so the workspace handles all three ways of switching in one place.
 pub fn render(active: ViewMode, cx: &App) -> impl IntoElement {
@@ -45,9 +51,9 @@ pub fn render(active: ViewMode, cx: &App) -> impl IntoElement {
     let (active_text, idle_text) = (theme.foreground, theme.muted_foreground);
 
     h_flex()
-        .p(px(2.))
-        .gap(px(2.))
-        .rounded_md()
+        .p(px(TRACK_PADDING))
+        .gap(px(TRACK_PADDING))
+        .rounded(px(SEGMENT_RADIUS + TRACK_PADDING))
         .bg(track)
         .border_1()
         .border_color(border)
@@ -61,7 +67,7 @@ pub fn render(active: ViewMode, cx: &App) -> impl IntoElement {
                 .h(px(24.))
                 .px_2p5()
                 .gap_1p5()
-                .rounded(px(5.))
+                .rounded(px(SEGMENT_RADIUS))
                 .text_xs()
                 .text_color(text)
                 .cursor_pointer()
