@@ -49,9 +49,15 @@ impl Default for Settings {
 }
 
 impl Settings {
-    /// Where settings are stored on this OS, or `None` if the OS has no config folder.
+    /// Where settings are stored: `$KUNOTES_CONFIG_DIR/settings.json` if that
+    /// variable is set (handy for a separate dev/test instance), otherwise the OS
+    /// config folder. `None` if neither exists.
     pub fn default_path() -> Option<PathBuf> {
-        dirs::config_dir().map(|dir| dir.join("kunotes").join("settings.json"))
+        let dir = match std::env::var_os("KUNOTES_CONFIG_DIR") {
+            Some(dir) if !dir.is_empty() => PathBuf::from(dir),
+            _ => dirs::config_dir()?.join("kunotes"),
+        };
+        Some(dir.join("settings.json"))
     }
 
     /// Loads settings from `path`. A missing or broken file gives the defaults,

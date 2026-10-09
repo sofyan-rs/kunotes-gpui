@@ -48,6 +48,8 @@ cargo clippy --workspace --all-targets -- -D warnings
 
 Windows PowerShell: `$env:RUST_LOG="kunotes=debug"; cargo run -p kunotes`
 
+**Separate dev settings:** `KUNOTES_CONFIG_DIR=/tmp/kn-dev cargo run -p kunotes` keeps settings (last vault, view mode) in that folder instead of your real ones. Use it when testing with a throwaway vault while your normal KuNotes is in use.
+
 The first build is slow because GPUI is large. Framework crates are built at `opt-level = 3` even in debug (see `[profile.dev.package]` in the root `Cargo.toml`), which makes the first build slower but keeps the debug app responsive.
 
 A test vault: open `fixtures/sample-vault/`. Its `Example.md` uses every markdown element the preview must render.
