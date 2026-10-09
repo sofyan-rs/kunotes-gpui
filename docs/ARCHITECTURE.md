@@ -94,7 +94,8 @@ kunotes-gpui/
 │               ├── title_bar.rs
 │               ├── sidebar/
 │               │   ├── mod.rs         # Sidebar view: header buttons + tree
-│               │   └── file_tree.rs   # FileTree (uniform_list rows, DnD, context menu)
+│               │   ├── file_tree.rs   # FileTree (uniform_list rows, DnD, context menu)
+│               │   └── file_tree_tests.rs # headless UI tests (click, keys, drag)
 │               ├── editor/
 │               │   ├── mod.rs         # EditorPane: loads a file, switches view modes
 │               │   ├── formatter_bar.rs
@@ -480,7 +481,7 @@ Use GPUI's `secondary-` modifier, which is `cmd` on macOS and `ctrl` on Windows 
 | Cycle view mode | `secondary-e` | Workspace |
 | Bold / Italic / Link | `secondary-b` / `secondary-i` / `secondary-shift-k` | Editor |
 | Delete selection | `backspace`, `delete`, `secondary-backspace` | FileTree |
-| Rename selection | `f2` (Win/Linux), `enter` (macOS Finder-like) | FileTree |
+| Rename selection | `f2` (all platforms; `enter` opens/toggles instead) | FileTree |
 | Quit | `cmd-q` (macOS), `ctrl-q` (Linux), `alt-f4` (Windows, provided by the OS) | global |
 
 ### 8.2 Filenames (`kunotes_core::names`)

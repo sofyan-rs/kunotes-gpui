@@ -34,6 +34,16 @@ impl SettingsStore {
         });
     }
 
+    /// Default settings that are never written to disk. For tests.
+    #[cfg(test)]
+    pub fn init_in_memory(cx: &mut App) {
+        cx.set_global(SettingsStore {
+            settings: Settings::default(),
+            path: None,
+            save_task: None,
+        });
+    }
+
     pub fn get(cx: &App) -> &Settings {
         &cx.global::<SettingsStore>().settings
     }

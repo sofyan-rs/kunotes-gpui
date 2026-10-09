@@ -1,6 +1,8 @@
 //! The sidebar: a row of action buttons on top, the vault's file tree below.
 
 mod file_tree;
+#[cfg(test)]
+mod file_tree_tests;
 
 use gpui_kit::assets::IconName;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
@@ -10,7 +12,7 @@ use gpui_kit::{
     Window, div,
 };
 
-use crate::actions::{NewFile, NewFolder, OpenVault, WORKSPACE};
+use crate::actions::{DeleteSelection, NewFile, NewFolder, OpenVault, WORKSPACE};
 use crate::vault_store::VaultStore;
 use file_tree::FileTree;
 
@@ -28,6 +30,7 @@ impl Sidebar {
     }
 
     fn render_header(&self, has_vault: bool, cx: &mut Context<Self>) -> impl IntoElement {
+        let has_selection = self.vault.read(cx).selected_path().is_some();
         h_flex()
             .px_2()
             .py_1()
@@ -55,9 +58,15 @@ impl Sidebar {
                 &NewFolder,
                 has_vault,
             ))
-            // Delete and Search come in Phases 3 and 5; shown disabled until then.
-            .child(disabled_button("delete", IconName::Trash, "Delete"))
+            .child(header_button(
+                "delete",
+                IconName::Trash,
+                "Move to Trash",
+                &DeleteSelection,
+                has_selection,
+            ))
             .child(div().flex_1())
+            // Search comes in Phase 5; shown disabled until then.
             .child(disabled_button("search", IconName::Search, "Search Notes"))
     }
 

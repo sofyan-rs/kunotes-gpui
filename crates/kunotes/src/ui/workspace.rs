@@ -7,9 +7,12 @@ use gpui_kit::{
     ParentElement as _, PathPromptOptions, Render, Styled as _, Subscription, Window, div, px,
 };
 
-use crate::actions::{CloseVault, NewFile, NewFolder, OpenVault, ToggleSidebar, WORKSPACE};
+use crate::actions::{
+    CloseVault, DeleteSelection, NewFile, NewFolder, OpenVault, RenameSelection, ToggleSidebar,
+    WORKSPACE,
+};
 use crate::settings_store::SettingsStore;
-use crate::ui::{empty_state, sidebar::Sidebar, title_bar};
+use crate::ui::{dialogs, empty_state, sidebar::Sidebar, title_bar};
 use crate::vault_store::{VaultEvent, VaultStore};
 
 const SIDEBAR_DEFAULT_WIDTH: f32 = 250.;
@@ -66,6 +69,12 @@ impl Workspace {
         }
     }
 
+    /// The shared vault state. For tests.
+    #[cfg(test)]
+    pub fn vault(&self) -> Entity<VaultStore> {
+        self.vault.clone()
+    }
+
     /// Asks the user for a folder and opens it as the vault.
     fn open_vault(&mut self, _: &OpenVault, window: &mut Window, cx: &mut Context<Self>) {
         let answer = cx.prompt_for_paths(PathPromptOptions {
@@ -104,11 +113,35 @@ impl Workspace {
     }
 
     fn new_file(&mut self, _: &NewFile, _: &mut Window, cx: &mut Context<Self>) {
-        self.vault.update(cx, |vault, cx| vault.create_file(cx));
+        self.vault
+            .update(cx, |vault, cx| vault.create_file(None, cx));
     }
 
     fn new_folder(&mut self, _: &NewFolder, _: &mut Window, cx: &mut Context<Self>) {
-        self.vault.update(cx, |vault, cx| vault.create_folder(cx));
+        self.vault
+            .update(cx, |vault, cx| vault.create_folder(None, cx));
+    }
+
+    fn rename_selection(
+        &mut self,
+        _: &RenameSelection,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if let Some(path) = self.vault.read(cx).selected_path().map(|p| p.to_path_buf()) {
+            dialogs::rename(self.vault.clone(), path, window, cx);
+        }
+    }
+
+    fn delete_selection(
+        &mut self,
+        _: &DeleteSelection,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if let Some(path) = self.vault.read(cx).selected_path().map(|p| p.to_path_buf()) {
+            dialogs::confirm_trash(self.vault.clone(), path, window, cx);
+        }
     }
 
     fn toggle_sidebar(&mut self, _: &ToggleSidebar, _: &mut Window, cx: &mut Context<Self>) {
@@ -151,6 +184,8 @@ impl Render for Workspace {
             .on_action(cx.listener(Self::new_file))
             .on_action(cx.listener(Self::new_folder))
             .on_action(cx.listener(Self::toggle_sidebar))
+            .on_action(cx.listener(Self::rename_selection))
+            .on_action(cx.listener(Self::delete_selection))
             .size_full()
             .bg(cx.theme().background)
             .text_color(cx.theme().foreground)

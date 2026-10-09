@@ -116,7 +116,7 @@ The full tree, the rules for adding files, and the "where does my code go?" tabl
 | Layer | How |
 |---|---|
 | `kunotes-core` | Plain `#[test]`. Filesystem tests use `tempfile::tempdir()`. OS-specific cases use `#[cfg(unix)]` / `#[cfg(windows)]`. |
-| UI behavior | `gpui_kit::test` / `TestWindowExt` for view-level tests where they add value (tree selection, keybindings). |
+| UI behavior | Headless UI tests with gpui-kit `test-support` (`#[gpui_kit::test]`, `TestWindowExt::click/press/drag_to/input`). Open the real `Workspace` on a `tempfile` vault, call `SettingsStore::init_in_memory` so the user's settings are never touched, and assert on disk/state. Mark elements to find with `.test_support()` (before `track_focus`). Example: `ui/sidebar/file_tree_tests.rs`. Put them in `<view>_tests.rs` next to the view. |
 | Manual | The feature checklist in PLAN.md, per OS, before each release. |
 
 Every bug fix in `kunotes-core` gets a regression test. New format transforms need tests for empty selections, multi-byte text, and the start and end of the document.

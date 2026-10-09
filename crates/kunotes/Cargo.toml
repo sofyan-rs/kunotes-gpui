@@ -13,3 +13,9 @@ gpui-kit.workspace = true
 anyhow.workspace = true
 log.workspace = true
 env_logger.workspace = true
+opener.workspace = true
+
+[dev-dependencies]
+# `test-support` turns on gpui-kit's headless UI test harness (click, press, drag).
+gpui-kit = { workspace = true, features = ["test-support"] }
+tempfile.workspace = true

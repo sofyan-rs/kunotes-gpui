@@ -93,20 +93,23 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done
 
 ---
 
-## Phase 3: File tree
+## Phase 3: File tree ✅
 
 **Goal:** a fully interactive file tree (§6.2).
 
-- [ ] `ui/sidebar/file_tree.rs`: `uniform_list` over `visible_rows(root, expanded)`, rows rendered with `ListItem`, depth indent, chevron, and folder/file icons (selected row → white icon).
-- [ ] Single-click select. Double-click a folder to toggle. Chevron click to toggle.
-- [ ] Keyboard navigation (`up`/`down`/`left`/`right`/`enter`) within the `FileTree` key context. Scroll the selection into view.
-- [ ] Expansion state lives in `VaultStore.expanded` and survives `refresh`. A newly created file's parent auto-expands.
-- [ ] Selection sync: tree selection → `selected_path`; files → `selected_file`. External selection changes (quick switcher, create) are reflected in the tree.
-- [ ] Context menu (folder items, rename, delete, reveal with the per-OS label, copy path, copy relative path).
-- [ ] `ui/dialogs.rs`: rename dialog (pre-filled, validated, inline error) and delete confirm (`AlertDialog`, per-OS trash wording).
-- [ ] Header actions are wired: new file/folder in the vault root, delete selection.
-- [ ] Drag and drop: drag rows onto folders or empty space (vault root), with a drop-target highlight. Invalid drops are rejected visually.
-- [ ] Error notifications for failed ops.
+- [x] `ui/sidebar/file_tree.rs`: `uniform_list` over `visible_rows(root, expanded)`, rows rendered with `ListItem`, depth indent, chevron, folder (blue, open/closed) and file icons.
+- [x] Single-click select. Double-click a folder to toggle. Chevron click to toggle.
+- [x] Keyboard navigation (`up`/`down`/`left`/`right`/`enter`) within the `FileTree` key context. Scroll the selection into view.
+- [x] Expansion state lives in `VaultStore.expanded` and survives `refresh`. New items expand their parents.
+- [x] Selection: tree selection → `selected_path`; files → `selected_file`. Rename/move remap both, plus expanded folders (`VaultStore::remap`).
+- [x] Context menu (New Note/Folder on folders, Rename…, Delete, per-OS reveal via `opener::reveal`, Copy Path, Copy Relative Path).
+- [x] `ui/dialogs.rs`: rename (pre-filled without `.md`, text selected, Enter confirms; invalid name keeps the dialog open + error notification) and delete confirm (`AlertDialog`, danger button, per-OS trash wording).
+- [x] Header actions wired: new note/folder in the vault root, delete selection (enabled only with a selection). File menu gains Rename… and Move to Trash.
+- [x] Drag and drop: rows onto folders, or onto empty space for the vault root, with a drop-target highlight. Invalid moves (into itself, name collision) show an error notification.
+- [x] Error notifications for failed ops.
+- [ ] Later polish: white icon on the selected row; visually refusing invalid drops while dragging.
+
+**Tests:** 7 headless UI tests in `ui/sidebar/file_tree_tests.rs` (gpui-kit `test-support`) drive the real `Workspace` on a temp vault with real clicks, keys, and drags: click/double-click, arrow-key navigation, drag onto folder, drop on empty space, F2 rename, invalid rename, Backspace → confirm → Escape. A deliberate break of the drop handler makes the two drag tests fail, so they test real behavior.
 
 **Done when:** every interaction in §6.2 works on all three OSes, and renaming a folder that contains the open file keeps that file open.
 

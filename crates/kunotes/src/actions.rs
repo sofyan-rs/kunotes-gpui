@@ -15,12 +15,30 @@ actions!(
         NewFile,
         NewFolder,
         ToggleSidebar,
+        DeleteSelection,
+        RenameSelection,
         Quit,
+    ]
+);
+
+// File tree keyboard navigation. Only active while the tree has focus.
+actions!(
+    file_tree,
+    [
+        SelectPrevious,
+        SelectNext,
+        ExpandFolder,
+        CollapseFolder,
+        OpenSelected
     ]
 );
 
 /// Key context of the main window. Bindings with this context work anywhere in it.
 pub const WORKSPACE: &str = "Workspace";
+
+/// Key context of the file tree. Bindings here only work while the tree has focus,
+/// so e.g. Backspace deletes a file only when you're in the tree, never while typing.
+pub const FILE_TREE: &str = "FileTree";
 
 /// Registers all keyboard shortcuts. `secondary` means Cmd on macOS and Ctrl elsewhere.
 pub fn bind_keys(cx: &mut App) {
@@ -29,6 +47,15 @@ pub fn bind_keys(cx: &mut App) {
         KeyBinding::new("secondary-n", NewFile, Some(WORKSPACE)),
         KeyBinding::new("secondary-shift-n", NewFolder, Some(WORKSPACE)),
         KeyBinding::new("secondary-\\", ToggleSidebar, Some(WORKSPACE)),
+        KeyBinding::new("up", SelectPrevious, Some(FILE_TREE)),
+        KeyBinding::new("down", SelectNext, Some(FILE_TREE)),
+        KeyBinding::new("right", ExpandFolder, Some(FILE_TREE)),
+        KeyBinding::new("left", CollapseFolder, Some(FILE_TREE)),
+        KeyBinding::new("enter", OpenSelected, Some(FILE_TREE)),
+        KeyBinding::new("f2", RenameSelection, Some(FILE_TREE)),
+        KeyBinding::new("backspace", DeleteSelection, Some(FILE_TREE)),
+        KeyBinding::new("delete", DeleteSelection, Some(FILE_TREE)),
+        KeyBinding::new("secondary-backspace", DeleteSelection, Some(FILE_TREE)),
     ]);
     if let Some(keys) = platform::quit_keybinding() {
         cx.bind_keys([KeyBinding::new(keys, Quit, None)]);
@@ -45,6 +72,9 @@ pub fn app_menus() -> Vec<Menu> {
             MenuItem::separator(),
             MenuItem::action("New Note", NewFile),
             MenuItem::action("New Folder", NewFolder),
+            MenuItem::separator(),
+            MenuItem::action("Rename…", RenameSelection),
+            MenuItem::action("Move to Trash", DeleteSelection),
             MenuItem::separator(),
             MenuItem::action("Close Vault", CloseVault),
         ]),
