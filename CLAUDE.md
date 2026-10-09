@@ -20,6 +20,13 @@ Scope is intentionally minimal: open a folder, browse it, edit markdown. There a
 
 If the design changes, update ARCHITECTURE.md in the same change.
 
+## Code discovery (codebase-memory MCP)
+
+The repo is indexed in codebase-memory as project `Users-sofyan-Dev-Project-Personal-kunotes-gpui`.
+- Explore code with codebase-memory tools first: `search_graph` (find functions, structs, modules), `trace_path` (call chains), `get_code_snippet` (exact source), `get_architecture`, and `search_code`. Use Grep/Read for docs, configs, and before editing.
+- Re-run `index_repository` after adding or moving modules, or when results look stale.
+- Architecture decisions are stored as an ADR (`manage_adr`, mode `get`). Update it in the same change as ARCHITECTURE.md when a decision changes.
+
 ## Build / Test
 
 ```bash
@@ -34,13 +41,17 @@ Rust ≥ 1.92 (required by gpui-kit). Windows needs the MSVC toolchain. Fedora n
 
 ## Layout
 
-- `crates/kunotes-core/`: **pure logic, no gpui.** Covers scan (`node.rs`), file ops and `atomic_write` (`fs_ops.rs`), filename validation (`names.rs`), relative path and breadcrumb (`paths.rs`), formatter transforms (`format.rs`), line/col and char count (`cursor.rs`), file flatten/filter and tree `visible_rows` (`search.rs`), and `Settings` (`settings.rs`). Anything that can be written without gpui goes here, with tests.
+- `crates/kunotes-core/`: **pure logic, no gpui.** Covers scan (`node.rs`), file ops and `atomic_write` (`fs_ops.rs`), filename validation (`names.rs`), relative path and breadcrumb (`paths.rs`), formatter transforms (`format.rs`), line/col and char count (`cursor.rs`), file flatten/filter and tree `visible_rows` (`search.rs`), `Settings` (`settings.rs`), and Live-mode logic (`live.rs`: blocks, marker ranges, cursor movement over hidden ranges). Anything that can be written without gpui goes here, with tests.
 - `crates/kunotes/`: the GPUI app.
   - `vault.rs`: the `VaultStore` entity, the single source of truth, which emits `VaultEvent`.
   - `watcher.rs`: `notify` events go through a channel to `refresh`.
   - `save.rs`: `SaveDebouncer`, 500ms.
   - `platform.rs`: the **only** place for `#[cfg(target_os)]` and OS wording.
-  - `ui/*`: views.
+  - `ui/*`: views. `ui/live_editor/` is the custom Live-mode editor (stage B).
+
+## Editor modes
+
+Live (realtime formatter, default once Phase 9 ships), Source (highlighted raw markdown), Split, Preview. All modes share **one markdown string buffer**. Live is not rich-text WYSIWYG: never introduce a separate document model or an HTML round-trip, and switching modes must never change file bytes. Live ships in two stages: A = styled gpui-kit editor (Phase 9), B = custom `LiveEditor` with markers hidden off-cursor (Phase 10). See ARCHITECTURE §6.3 and §6.9.
 
 ## Rules
 

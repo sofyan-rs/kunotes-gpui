@@ -10,7 +10,11 @@ Open any folder on disk as a "vault", browse it in a sidebar, and edit markdown 
 
 - **Vault-based:** open any folder as a vault. Notes stay as plain `.md` files.
 - **File tree:** click to select, double-click a folder to expand or collapse, drag and drop to move, and a context menu (new file or folder, rename, delete to trash, reveal in file manager, copy path or relative path).
-- **Edit / Split / Preview:** raw markdown, rendered preview, or both side by side.
+- **Four view modes on one markdown buffer:**
+  - **Live:** formats as you type, like Obsidian Live Preview. Markers hide when the cursor leaves them.
+  - **Source:** raw markdown with syntax highlighting, like VS Code or Zed.
+  - **Split:** source and rendered preview side by side.
+  - **Preview:** read-only rendered document.
 - **Formatter bar:** bold, italic, H1/H2, link, inline code, code block, quote, lists, horizontal rule.
 - **CommonMark preview:** headings, emphasis, inline code, fenced code blocks, ordered, unordered, and task lists, blockquotes, links, rules.
 - **Autosave:** debounced atomic writes, with no save button and no data loss on quit.

@@ -19,6 +19,8 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done
 - [ ] Spike throwaway examples in `crates/kunotes/examples/spike_*.rs` to answer §11:
   - [ ] Editor: soft wrap, cursor offset, selection get/set, undoable range replace, markdown highlighting.
   - [ ] TextView: task lists, styling hooks.
+  - [ ] Live stage A: per-capture highlight styles (weight, italic, background, size), proportional font (§11.10).
+  - [ ] Live stage B: minimal `EntityInputHandler` element that accepts typing + IME on all three OSes (§11.11).
   - [ ] `secondary-` keybinding.
   - [ ] Double-click via `ClickEvent` on `ListItem`.
   - [ ] `on_drag`/`on_drop` inside `uniform_list`.
@@ -72,7 +74,7 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done
 
 **Goal:** the window opens, a vault can be opened and is remembered, and the layout matches the mockup in §5 (without the tree contents yet).
 
-- [ ] `actions.rs`: `actions!(kunotes, [OpenVault, NewFile, NewFolder, DeleteSelection, RenameSelection, QuickSwitcher, ToggleSidebar, ViewEdit, ViewSplit, ViewPreview, SaveNow, Quit])`.
+- [ ] `actions.rs`: `actions!(kunotes, [OpenVault, NewFile, NewFolder, DeleteSelection, RenameSelection, QuickSwitcher, ToggleSidebar, ViewLive, ViewSource, ViewSplit, ViewPreview, CycleViewMode, SaveNow, Quit])`.
 - [ ] `app.rs`: keybindings (§8.1), `cx.set_menus` (macOS), quit handling, theme follows system.
 - [ ] `vault.rs`: `VaultStore` entity with `open_vault`, `restore_last_vault`, `close_vault`, `refresh` (background scan + generation guard), and events.
 - [ ] `ui/workspace.rs`: `TitleBar` (sidebar toggle, centered title) + `h_resizable` (sidebar 250, range 200–400, persisted width/visibility) + detail area.
@@ -104,15 +106,15 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done
 
 ---
 
-## Phase 4: Editor, preview, autosave
+## Phase 4: Source editor, preview, autosave
 
-**Goal:** edit, preview, and save (§6.3–§6.5, §7.1).
+**Goal:** edit (Source mode), preview, and save (§6.3–§6.5, §7.1). Live mode comes in Phases 9–10; until then Source is the default.
 
 - [ ] `ui/editor_pane.rs`: recreated per file, loads content (lossy UTF-8 fallback with a warning), preserves line endings.
-- [ ] Editor: monospace 15px, soft wrap, padding, no line numbers, markdown highlighting if available.
+- [ ] Source editor: monospace 15px, soft wrap, padding, no line numbers, markdown highlighting.
 - [ ] `save.rs`: `SaveDebouncer` (500ms). Flush on file switch, vault switch/close, window close, app quit, and `secondary-s`. Uses `atomic_write` in the background.
 - [ ] Breadcrumb (relative path, chevrons, last segment emphasized).
-- [ ] View-mode segmented toggle (Edit/Split/Preview) + `secondary-1/2/3`, persisted in settings.
+- [ ] View-mode segmented toggle (Source/Split/Preview for now; Live segment hidden until Phase 9) + `secondary-2/3/4`, `secondary-e` to cycle, persisted in settings.
 - [ ] `ui/preview.rs`: `TextView` markdown, scrollable, selectable, links open in the browser, ~150ms throttle in Split mode. Implement the pulldown-cmark fallback **only if** the Phase 0 spike found TextView insufficient.
 - [ ] Split: `h_resizable` 50/50.
 - [ ] `ui/formatter_bar.rs`: 11 buttons in 5 groups with tooltips, wired to `kunotes_core::format` through one undoable replace each. Restores the selection/cursor and editor focus.
@@ -169,9 +171,43 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done
 
 ---
 
+## Phase 9: Live mode stage A, styled source (v1.5)
+
+**Goal:** a formatted writing view on the same buffer (§6.9 stage A). Becomes the default mode.
+
+- [ ] Live segment in the view-mode toggle + `secondary-1`. Default `view_mode` becomes Live for new settings files.
+- [ ] Second editor configuration: proportional UI font, custom markdown highlight theme (headings, bold, italic, inline code, links, dimmed markers).
+- [ ] Cursor/selection carries over when switching Live ⇄ Source.
+- [ ] Formatter bar and editor shortcuts work in Live.
+- [ ] Light and dark theme variants of the highlight styles.
+
+**Done when:** writing in Live on `Example.md` shows emphasis and headings styled, switching modes never changes the file bytes, and this holds on all three OSes.
+
+---
+
+## Phase 10: Live mode stage B, custom live editor (v2)
+
+**Goal:** Obsidian-style live preview (§6.9 stage B), replacing stage A as the Live implementation.
+
+- [ ] `kunotes-core::live`: block parsing with byte ranges (pulldown-cmark offset iter), marker ranges per block/inline span, "revealed" ranges for a cursor/selection, cursor movement over hidden ranges, list continuation. Unit tests for each.
+- [ ] `ui/live_editor/buffer.rs`: `ropey` buffer, undo/redo with grouping, incremental re-parse of edited blocks.
+- [ ] `layout.rs`: per-block shaped lines with styled runs, heading sizes, soft wrap, visible-blocks-only layout.
+- [ ] `element.rs`: paint text, cursor, selection, checkbox, hr, code-block background, quote bar.
+- [ ] `input.rs`: `EntityInputHandler` (typing, IME marked text), mouse (click, drag, double/triple click, shift-click).
+- [ ] `actions.rs`: movement (char, word, line, visual up/down, home/end, page), delete, clipboard, select all, Enter list continuation, Tab/Shift-Tab list indent.
+- [ ] Checkbox click toggles `[ ]` ⇄ `[x]` as one undoable edit. Cmd/Ctrl+click opens links.
+- [ ] Formatter bar + shortcuts reuse `kunotes_core::format`.
+- [ ] Performance: typing stays smooth on a ~1 MB note.
+- [ ] Setting to fall back to stage A.
+- [ ] Manual IME test: Japanese/Chinese input on macOS, Windows (MS IME), and Fedora (ibus + fcitx5, Wayland).
+
+**Done when:** the Live checklist rows pass on all three OSes and a full writing session in Live on `Example.md` produces a byte-identical file to doing the same edits in Source.
+
+---
+
 ## Feature checklist
 
-Check off per OS during Phase 7.
+Check off per OS during Phase 7 (Live rows after Phases 9 and 10).
 
 | Feature | macOS | Windows | Fedora |
 |---|:-:|:-:|:-:|
@@ -185,7 +221,9 @@ Check off per OS during Phase 7.
 | New folder (`New Folder`, unique suffix) | [ ] | [ ] | [ ] |
 | Rename (auto `.md`), with validation | [ ] | [ ] | [ ] |
 | Delete with confirmation → OS trash | [ ] | [ ] | [ ] |
-| Edit / Split / Preview modes | [ ] | [ ] | [ ] |
+| Source / Split / Preview modes | [ ] | [ ] | [ ] |
+| Live mode stage A (styled source) | [ ] | [ ] | [ ] |
+| Live mode stage B (markers hidden off-cursor, checkboxes, IME) | [ ] | [ ] | [ ] |
 | Formatter bar (B, I, H1, H2, link, inline code, code block, quote, bullet, numbered, hr) | [ ] | [ ] | [ ] |
 | Preview: headings, emphasis, inline code, code blocks, lists (nested), task lists, quotes, links, hr | [ ] | [ ] | [ ] |
 | Preview text selectable/copyable | [ ] | [ ] | [ ] |
@@ -206,5 +244,6 @@ Check off per OS during Phase 7.
 | Editor component lacks a selection/replace API | Formatter bar blocked | Found in the Phase 0 spike. Fallback: `set_value` + cursor restore (loses undo granularity), or contribute upstream. |
 | TextView doesn't render task lists | Preview feature gap | pulldown-cmark custom renderer (§6.5). |
 | Linux portal/Vulkan variability | Picker or window fails on some setups | Target Fedora Workstation. Document requirements. Show a clear error when the picker fails. Test on Fedora Workstation (GNOME, Wayland) and the Fedora KDE spin. |
+| Live stage B editor is a large custom component (cursor, selection, IME, undo, wrap) | Delays v2; subtle editing bugs | Ship stage A first. Keep pure logic in `kunotes-core::live` with heavy tests. Spike IME in Phase 0. Fall back to stage A behind a setting if a platform lags. |
 | Watcher noise from our own saves | Extra rescans | Rescans run in the background and are debounced. Optimize only if profiling shows a problem. |
 | Windows path quirks (case-insensitivity, reserved names, long paths) | Rename/move bugs | `names.rs` validation, case-only rename handling, CI tests on Windows. |

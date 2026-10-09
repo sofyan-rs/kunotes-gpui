@@ -30,7 +30,8 @@ Scope: **open a folder, browse it, edit markdown.** There are no wikilinks, back
 | UI framework | `gpui-kit = "0.7.1"` | Re-exports GPUI. Do not add `gpui` separately. |
 | Toolchain | Rust ≥ 1.92, edition 2024 | 1.92 is required by gpui-kit's locked dependency graph. Windows needs the MSVC toolchain. |
 | Markdown preview | `gpui_kit::component::text::TextView::markdown` | Fallback if task lists don't render: `pulldown-cmark` plus a custom renderer (§6.5). |
-| Editor | gpui-kit `EditorState` / `TextareaState` (multi-line, soft wrap) | Exact type is picked in the Phase 0 spike (§11). |
+| Editor (Source mode, Live stage A) | gpui-kit `EditorState` / `TextareaState` (multi-line, soft wrap, tree-sitter markdown highlight) | Exact type is picked in the Phase 0 spike (§11). |
+| Editor (Live stage B) | Custom `LiveEditor` element on GPUI primitives (`EntityInputHandler`, `StyledText`/text layout) + `ropey` buffer + `pulldown-cmark` offsets | See §6.9. |
 | File watching | `notify` + `notify-debouncer-full` | FSEvents on macOS, ReadDirectoryChangesW on Windows, inotify on Linux. |
 | Trash | `trash` crate | macOS Trash, Windows Recycle Bin, freedesktop trash on Linux. |
 | Reveal in file manager | `opener` crate (`reveal` feature) | Finder, Explorer, or the default Linux file manager. |
@@ -62,6 +63,7 @@ kunotes-gpui/
 │   │       ├── format.rs       # markdown formatter transforms (text + range -> text + range)
 │   │       ├── cursor.rs       # byte offset -> (line, col), char count
 │   │       ├── search.rs       # flatten files, quick-switcher filter, tree visible rows
+│   │       ├── live.rs         # Live mode: blocks, marker ranges, cursor over hidden ranges, list continuation
 │   │       └── settings.rs     # Settings struct + load/save (serde)
 │   └── kunotes/                # GPUI app (binary)
 │       ├── src/
@@ -80,6 +82,7 @@ kunotes-gpui/
 │       │       ├── editor_pane.rs      # breadcrumb, view-mode toggle, editor/preview, status bar
 │       │       ├── formatter_bar.rs
 │       │       ├── preview.rs
+│       │       ├── live_editor/        # Live stage B custom editor (§6.9)
 │       │       ├── status_bar.rs
 │       │       ├── quick_switcher.rs
 │       │       ├── empty_state.rs
@@ -177,7 +180,7 @@ The app isn't sandboxed, so the last vault is stored as a plain path.
 #[derive(Serialize, Deserialize, Default)]
 pub struct Settings {
     pub last_vault: Option<PathBuf>,
-    pub view_mode: ViewMode,          // Edit | Split | Preview
+    pub view_mode: ViewMode,          // Live | Source | Split | Preview
     pub sidebar_width: Option<f32>,
     pub sidebar_visible: bool,
 }
@@ -193,7 +196,7 @@ Settings are written atomically and saved on change (debounced). A missing or co
 ┌─ TitleBar ───────────────────────────────────────────────────────────┐
 │ ● ● ●  [▤ sidebar toggle]            Example                           │
 ├─ Sidebar (resizable 200–400, default 250) ─┬─ EditorPane ─────────────┤
-│ [📁][✎][📁+][🗑]                       [🔍] │ TEST › Example  [Edit|Split|Preview]
+│ [📁][✎][📁+][🗑]                       [🔍] │ TEST › Example  [Live|Source|Split|Preview]
 │ ▾ 📁 TEST                                   │ [B][I] | H1 H2 | 🔗 <> {} ❝ | • 1. | ─
 │     📄 Example.md   (selected)              │ ┌─ editor ──────┬─ preview ─────┐
 │ ▸ 📁 Account                                │ │ # Example      │ Example       │
@@ -259,13 +262,20 @@ If Phase 0 shows that `Tree` can cover all of this cleanly, swapping it in is a 
 A new `EditorPane` entity is created whenever `selected_file` changes, so per-file state never leaks between files.
 
 - **Load:** read the file as UTF-8 (lossy fallback with a warning notification), then `set_value`. Keep the original line ending style (`\n` vs `\r\n`) and write it back unchanged.
-- **Header row:** breadcrumb on the left (path relative to the vault root, vault name omitted, `.md` stripped, last segment highlighted, chevron separators). Edit/Split/Preview `ToggleGroup::segmented()` on the right. ToggleGroup is multi-state, so the view keeps a single `ViewMode` and sets `checked(mode == X)` on each toggle.
-- **Formatter bar:** shown in Edit and Split modes (§6.4).
-- **Body:**
-  - Edit: editor only.
-  - Preview: `TextView` only.
-  - Split: `h_resizable("split")`, defaulting to 50/50.
-- **Editor styling:** monospace 15px, soft wrap, ~25px padding, no line numbers, markdown syntax highlighting if the `tree-sitter-markdown` feature works.
+- **Header row:** breadcrumb on the left (path relative to the vault root, vault name omitted, `.md` stripped, last segment highlighted, chevron separators). Live/Source/Split/Preview `ToggleGroup::segmented()` on the right. ToggleGroup is multi-state, so the view keeps a single `ViewMode` and sets `checked(mode == X)` on each toggle.
+- **Formatter bar:** shown in Live, Source, and Split modes (§6.4).
+- **Body:** the four view modes:
+
+| Mode | What you see | Editable | Built with |
+|---|---|---|---|
+| **Live** (default) | Formatted as you type: headings large, bold bold, markdown markers hidden except around the cursor, clickable checkboxes (§6.9) | yes | `LiveEditor` |
+| **Source** | Raw markdown, monospace, syntax highlighted (like VS Code / Zed) | yes | gpui-kit editor |
+| **Split** | Source on the left, Preview on the right; `h_resizable("split")`, 50/50 default | left side | both |
+| **Preview** | Read-only rendered document | no | `TextView` (§6.5) |
+
+- **One buffer, many views:** the markdown text is the only model. Every mode reads and writes the same string, so switching modes never changes the file. The cursor/selection offset carries over when switching between Live and Source.
+- **Source styling:** monospace 15px, soft wrap, ~25px padding, no line numbers, markdown highlighting via the `tree-sitter-markdown` feature.
+- **Default mode:** Live once Live stage A ships (PLAN Phase 9). Until then the default is Source.
 - **Status bar** (`StatusBar` component): left `Ln {line}, Col {col}` (1-based, from the cursor offset via `kunotes_core::cursor`), right `{n} characters` (grapheme count). Monospace 11px.
 - **Title:** the window title and the centered title-bar text show the file name without `.md`.
 
@@ -315,6 +325,61 @@ With no selection, transforms apply at the cursor position. They fall back to th
 - No vault: a large muted folder-plus icon, "No Vault Selected", "Open a folder to use it as your vault.", and an [Open Vault…] button.
 - Vault open but no file selected: a note icon, "No File Selected", "Select a file from the sidebar to start writing."
 
+### 6.9 Live mode (`ui/live_editor/`)
+
+Live mode is a "realtime formatter", in the style of Obsidian Live Preview or Typora. It is **not** a rich-text WYSIWYG: there is no separate document model and no HTML round-trip. The raw markdown string stays the single source of truth, and Live mode is only a different way to draw and edit it. Saving writes exactly the characters in the buffer.
+
+It ships in two stages.
+
+#### Stage A: styled source (PLAN Phase 9)
+
+- Reuses the gpui-kit editor from Source mode, with a proportional UI font instead of monospace.
+- A custom highlight theme for the markdown tree-sitter captures: headings bold and accent-colored, `**bold**` bold, `*italic*` italic, inline code monospace with a muted background, links accent-colored, and markers (`#`, `**`, `*`, `` ` ``, `>`, `-`, `[ ]`) dimmed.
+- Limits: markers stay visible and every line keeps the same font size, so headings aren't bigger. Phase 0 checks whether per-capture font size/weight is supported (§11).
+- Low effort. Gives a usable formatted writing view early.
+
+#### Stage B: custom live editor (PLAN Phase 10)
+
+A purpose-built editor element, because the gpui-kit editor can't hide characters or vary line heights.
+
+```
+ropey::Rope (buffer, byte offsets)
+   │  on change: incremental re-parse of affected blocks
+   ▼
+pulldown-cmark (offset iter) ──► Vec<Block { range, kind, inline_spans }>
+   │
+   ▼
+layout: per block → shaped lines (StyledText / text_system().shape_line) with runs
+        markers hidden unless the block or inline span contains the cursor/selection
+   │
+   ▼
+paint: text, cursor, selection, widgets (checkbox, hr, code-block background, quote bar)
+   ▲
+   │  EntityInputHandler (typing, IME composition, marked text) + key actions
+```
+
+Rendering rules:
+- **Reveal on cursor:** the block containing the cursor (and any block the selection touches) shows its raw markers, still styled. Other blocks hide markers: `## Title` shows as a large "Title", `**x**` as bold "x", `[label](url)` as a link "label".
+- **Headings:** sizes H1 > H2 > … > H6 with matching line heights.
+- **Task items:** `- [ ]` / `- [x]` render as a checkbox. Clicking toggles the character in the buffer (one undoable edit).
+- **Code blocks:** monospace with a muted background. The fences show only when the cursor is inside. Optional syntax highlight later.
+- **Blockquote:** accent left bar. **Thematic break:** a horizontal rule. **Lists:** bullets and numbers drawn as markers, nesting by indent.
+- **Links:** Cmd/Ctrl+click opens the URL. A plain click places the cursor.
+- Images and tables are out of scope for v2 and show as styled source.
+
+Editing requirements (the hard part; each needs tests or a manual check on all three OSes):
+- Cursor movement over hidden markers (left/right, up/down keeping the visual column, home/end, word jumps, page up/down).
+- Mouse: click, drag-select, double-click word, triple-click line, shift-click extend.
+- IME composition (CJK input) through `EntityInputHandler` marked-text APIs.
+- Undo/redo with grouping, clipboard copy/cut/paste as plain markdown, select all.
+- Soft wrap, vertical scrolling, scroll-to-cursor, and only laying out visible blocks for large notes.
+- Smart list continuation: Enter on a list item continues the list, Enter on an empty item ends it.
+- The formatter bar and editor shortcuts use the same `kunotes_core::format` transforms as Source mode.
+
+Code layout: `ui/live_editor/{mod.rs, buffer.rs, blocks.rs, layout.rs, element.rs, input.rs, actions.rs}`. Pure parts (block parsing, marker ranges, cursor movement over hidden ranges, list continuation) live in `kunotes-core::live` with unit tests.
+
+Fallback: if stage B can't hit the editing requirements on every OS, Live keeps stage A and stage B continues behind a setting.
+
 ---
 
 ## 7. Data integrity
@@ -363,7 +428,8 @@ Use GPUI's `secondary-` modifier, which is `cmd` on macOS and `ctrl` on Windows 
 | Quick switcher | `secondary-k`, `secondary-shift-o` | Workspace |
 | Save now | `secondary-s` | EditorPane |
 | Toggle sidebar | `secondary-\` | Workspace |
-| View: Edit / Split / Preview | `secondary-1` / `secondary-2` / `secondary-3` | Workspace |
+| View: Live / Source / Split / Preview | `secondary-1` / `secondary-2` / `secondary-3` / `secondary-4` | Workspace |
+| Cycle view mode | `secondary-e` | Workspace |
 | Bold / Italic / Link | `secondary-b` / `secondary-i` / `secondary-shift-k` | Editor |
 | Delete selection | `backspace`, `delete`, `secondary-backspace` | FileTree |
 | Rename selection | `f2` (Win/Linux), `enter` (macOS Finder-like) | FileTree |
@@ -414,7 +480,7 @@ A Wayland or X11 session with a working Vulkan driver (`vulkan-loader` plus Mesa
 | Vault | Open a folder via the native picker, reopen the last vault on launch | §4.1, §4.3 |
 | File tree | Folders + `.md` only, folders first, natural sort; click to select, double-click or chevron to expand; keyboard nav; drag-and-drop move; context menu | §6.2, §8.3 |
 | File ops | New file (`Untitled.md`, seeded `# Untitled`), new folder, rename (auto `.md`, validated), delete to OS trash with confirmation | §4.1, §6.7, §8.2 |
-| Editor | Plain-text markdown editing, soft wrap, Edit / Split / Preview modes, formatter bar, breadcrumb, status bar (Ln/Col, characters) | §6.3, §6.4 |
+| Editor | Live (realtime formatter), Source (highlighted raw markdown), Split, Preview modes on one text buffer; formatter bar, breadcrumb, status bar (Ln/Col, characters) | §6.3, §6.4, §6.9 |
 | Preview | CommonMark: headings, emphasis, inline code, code blocks, nested lists, task lists, blockquotes, links, rules; selectable text | §6.5 |
 | Saving | Debounced atomic autosave, flushed on switch and quit | §7.1 |
 | Quick switcher | Filter all notes by name, keyboard driven | §6.6 |
@@ -436,3 +502,5 @@ The gpui-kit docs don't fully specify these, so each must be checked against `do
 7. **App menu** on Windows and Linux: does gpui-kit provide an app menu bar component, or do we build a dropdown in the title bar?
 8. **System theme sync:** the API for following OS light/dark changes at runtime.
 9. **`prompt_for_paths` on Linux** without a portal: what's the failure mode, and do we need a fallback message?
+10. **Live stage A:** can the editor's highlight theme set font weight, italic, background, and font size per tree-sitter capture? Can it use a proportional font?
+11. **Live stage B:** confirm `EntityInputHandler` (IME marked text, `bounds_for_range`, `character_index_for_point`) works on macOS, Windows, and Fedora (Wayland, with ibus/fcitx) in the pinned GPUI version.
