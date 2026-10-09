@@ -44,3 +44,23 @@ fn escape_closes_without_opening(cx: &mut TestAppContext) {
         .read_with(cx, |vault, _| vault.selected_file().is_some());
     assert!(!opened);
 }
+
+#[gpui_kit::test]
+fn arrow_keys_choose_which_note_opens(cx: &mut TestAppContext) {
+    let s = setup(cx);
+
+    // "md" matches every note's path; the list is in tree order:
+    // Archive/old.md, Projects/Plan.md, Welcome.md.
+    in_window(&s, cx, |window, cx| window.press("secondary-k", cx));
+    in_window(&s, cx, |window, cx| window.input("md", cx));
+    in_window(&s, cx, |window, cx| window.press("down", cx));
+    in_window(&s, cx, |window, cx| window.press("down", cx));
+    in_window(&s, cx, |window, cx| window.press("down", cx)); // stays on the last row
+    in_window(&s, cx, |window, cx| window.press("up", cx));
+    in_window(&s, cx, |window, cx| window.press("enter", cx));
+
+    let opened = s
+        .vault
+        .read_with(cx, |vault, _| vault.selected_file().map(Path::to_path_buf));
+    assert_eq!(opened, Some(s.path("Projects/Plan.md")));
+}

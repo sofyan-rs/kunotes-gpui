@@ -191,6 +191,12 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done
 - [x] `.github/workflows/release.yml`: a `v*` tag builds the `.dmg`, `.zip`, and `.rpm`, then publishes a GitHub Release with notes. Running it by hand builds artifacts only.
 - [ ] Root `README.md` with screenshots from each OS.
 
+## Post-v1 polish (done)
+
+- [x] Inline rename and new note/folder in the tree, like VS Code/Zed (`sidebar/inline_edit.rs`), replacing the rename dialog. New notes open with the editor focused. 8 UI tests cover F2 rename keeping `.md`, invalid and taken names, Escape, new items in the target folder, and click-away confirm/cancel.
+- [x] Quick switcher rebuilt as its own view, with a padded, centered search field and right-aligned folder labels (gpui-kit `Command` couldn't be padded). Arrow-key test added.
+- [x] Testing note: UI test windows are activated (`window.activate_window()` in `test_helpers`), because GPUI only reports focus loss in an active window.
+
 ## Phase 9: Live mode stage A, styled source (v1.5)
 
 **Goal:** a formatted writing view on the same buffer (§6.9 stage A). Becomes the default mode.

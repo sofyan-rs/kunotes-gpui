@@ -1,52 +1,14 @@
-//! Small dialogs: rename a file or folder, and confirm moving it to the trash.
+//! Dialogs: confirm moving a file or folder to the trash.
+//! (Renaming happens inline in the file tree, see `sidebar/inline_edit.rs`.)
 
 use std::path::{Path, PathBuf};
 
+use gpui_kit::component::WindowExt as _;
 use gpui_kit::component::button::ButtonVariant;
-use gpui_kit::component::input::{Input, InputState};
-use gpui_kit::component::notification::NotificationType;
-use gpui_kit::component::{WindowExt as _, v_flex};
-use gpui_kit::{App, AppContext as _, Entity, ParentElement as _, Styled as _, Window};
-use kunotes_core::paths::note_title;
+use gpui_kit::{App, Entity, Window};
 
 use crate::platform;
 use crate::vault_store::VaultStore;
-
-/// Asks for a new name, then renames. On an invalid name the dialog stays open
-/// and the reason is shown as a notification.
-pub fn rename(vault: Entity<VaultStore>, path: PathBuf, window: &mut Window, cx: &mut App) {
-    // Files are shown without ".md"; it is added back automatically.
-    let current_name = note_title(&path);
-    let input = cx.new(|cx| InputState::new(window, cx).default_value(current_name));
-
-    let field = input.clone();
-    window.open_alert_dialog(cx, move |alert, _, _| {
-        let (vault, path, field) = (vault.clone(), path.clone(), field.clone());
-        alert
-            .confirm()
-            .title("Rename")
-            .ok_text("Rename")
-            // The dialog clips its body, and the focus ring is drawn just outside the
-            // input; the bottom padding keeps the ring from being cut off.
-            .child(v_flex().pt_2().pb_1().child(Input::new(&field)))
-            .on_ok(move |_, window, cx| {
-                let new_name = field.read(cx).value().to_string();
-                match vault.update(cx, |vault, cx| vault.rename(&path, &new_name, cx)) {
-                    Ok(()) => true,
-                    Err(message) => {
-                        window.push_notification((NotificationType::Error, message), cx);
-                        false // keep the dialog open so the user can fix the name
-                    }
-                }
-            })
-    });
-
-    // Focus the field with the whole name selected, ready to type over.
-    input.update(cx, |state, cx| {
-        state.focus(window, cx);
-        state.select_all(window, cx);
-    });
-}
 
 /// Asks for confirmation, then moves the item to the OS trash.
 pub fn confirm_trash(vault: Entity<VaultStore>, path: PathBuf, window: &mut Window, cx: &mut App) {

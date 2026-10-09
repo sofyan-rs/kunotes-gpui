@@ -47,6 +47,18 @@ pub fn breadcrumb(root: &Path, file: &Path) -> Vec<String> {
     parts
 }
 
+/// The part of a name to pre-select when renaming: everything except a `.md`
+/// extension for notes (so typing replaces "Plan" in "Plan.md"), the whole name
+/// for folders. A byte range into `name`.
+pub fn rename_selection(name: &str, is_dir: bool) -> std::ops::Range<usize> {
+    let has_md = name.len() > 3 && name.to_lowercase().ends_with(".md");
+    if !is_dir && has_md {
+        0..name.len() - 3
+    } else {
+        0..name.len()
+    }
+}
+
 /// After `old` was renamed or moved to `new`, returns where `path` lives now.
 ///
 /// Returns `None` if `path` was not `old` or inside it. Used to keep the
@@ -173,6 +185,21 @@ mod tests {
         );
         // "Projects2" only shares a text prefix with "Projects".
         assert!(can_move_into(&projects, &root().join("Projects2")));
+    }
+
+    #[test]
+    fn rename_selection_skips_only_the_md_extension_of_notes() {
+        assert_eq!(rename_selection("PLAN.md", false), 0..4);
+        assert_eq!(rename_selection("Shout.MD", false), 0..5);
+        assert_eq!(rename_selection("v1.2.md", false), 0..4);
+        assert_eq!(rename_selection("notes.txt", false), 0..9);
+        assert_eq!(
+            rename_selection("Folder.md", true),
+            0..9,
+            "folders: whole name"
+        );
+        assert_eq!(rename_selection(".md", false), 0..3);
+        assert_eq!(rename_selection("日本.md", false), 0..6);
     }
 
     #[test]

@@ -93,7 +93,10 @@ kunotes-gpui/
 │               ├── title_bar.rs
 │               ├── sidebar/
 │               │   ├── mod.rs         # Sidebar view: header buttons + tree
-│               │   ├── file_tree.rs   # FileTree (uniform_list rows, DnD, context menu)
+│               │   ├── file_tree.rs   # FileTree (uniform_list rows, drag and drop)
+│               │   ├── inline_edit.rs # rename / new note named inline
+│               │   ├── keyboard.rs    # arrow-key navigation
+│               │   ├── context_menu.rs
 │               │   └── file_tree_tests.rs # headless UI tests (click, keys, drag)
 │               ├── editor/
 │               │   ├── mod.rs         # EditorPane: load, autosave, view modes, formatting
@@ -104,7 +107,7 @@ kunotes-gpui/
 │               │   └── live/          # custom Live editor (Phase 10)
 │               ├── quick_switcher.rs
 │               ├── quick_switcher_tests.rs
-│               ├── dialogs.rs         # rename prompt, delete confirm
+│               ├── dialogs.rs         # delete confirmation
 │               └── empty_state.rs
 ├── assets/icon/kunotes.png    # 1024px app icon master
 ├── fixtures/sample-vault/     # sample notes for manual testing
@@ -209,8 +212,9 @@ Methods (each wraps a `kunotes-core` function, then calls `refresh` and updates 
 | `restore_last_vault()` | Read `Settings.last_vault`. If the directory still exists, call `open_vault`; otherwise clear it. |
 | `close_vault()` | Drop the watcher, clear state, forget the saved vault. |
 | `refresh()` | Rescan on `cx.background_spawn`, apply the result on the main thread if `scan_generation` still matches, emit `TreeChanged`. Prune `expanded` entries that no longer exist. |
-| `create_file(parent)` | Pick a unique `Untitled.md`, seed it with `# Untitled\n`, select it, expand the parent. |
-| `create_folder(parent)` | Pick a unique `New Folder`. |
+| `create_note(folder, name)` | Create exactly the typed name (`.md` added unless present), seeded with `# <name>`. Refuses a taken name. Opens the note and emits `NoteCreated` (the editor takes focus). |
+| `create_folder(folder, name)` | Create exactly the typed name. Refuses a taken name. |
+| `target_folder()` | Where a new item goes: the selected folder, the selected note's folder, or the root. |
 | `rename(path, new_name)` | Validate the name (§8.2). Append `.md` unless the name already ends in `.md`. Remap paths (below). |
 | `move_into(path, folder)` | Reject moving into itself or a descendant, and reject collisions. Remap paths (below). |
 | `trash(path)` | `trash::delete`. Clear the selection if it pointed at the path or something under it. |
@@ -303,7 +307,8 @@ fn visible_rows(root: &VaultNode, expanded: &HashSet<PathBuf>) -> Vec<VisibleRow
 | Double-click a folder | Toggle expansion (check `ClickEvent` click count == 2). |
 | Click the chevron | Toggle expansion. |
 | Keyboard | `up`/`down` move the selection; `right` expands; `left` collapses or jumps to the parent; `enter` toggles a folder or opens a file. |
-| Context menu | `ContextMenuExt::context_menu` on each row. Folders: New File, New Folder, separator. All rows: Rename…, Delete, separator, Reveal in Finder / Show in Explorer / Open Containing Folder, Copy Path, Copy Relative Path. |
+| Context menu (`context_menu.rs`) | Folders: New Note, New Folder, separator. All rows: Rename, Delete, separator, Reveal in Finder / Show in Explorer / Open Containing Folder, Copy Path, Copy Relative Path. |
+| Inline editing (`inline_edit.rs`) | Like VS Code/Zed. **Rename** (F2, menu) turns the row's name into a field with the name minus `.md` selected. **New note/folder** (header buttons, `secondary-n`, `secondary-shift-n`, menu) shows an empty field at the top of the target folder, expanding it. Enter confirms; Escape cancels; focus leaving the field confirms (or cancels when empty). An invalid or taken name keeps the field open after Enter and shows a notification. Focus loss uses `cx.on_focus_out` on the field. |
 | Drag and drop | Row `.on_drag(DraggedEntry { path }, preview)`. Folder rows and empty space below the list get `.drag_over::<DraggedEntry>(highlight)` and `.on_drop::<DraggedEntry>(→ VaultStore::move_into)`. Dropping on a file row is ignored. Dropping on empty space moves the item to the vault root. |
 | Icons | Folder (blue) and file-text (muted). The icon turns white on the selected row. |
 | Sort | Folders first, then natural case-insensitive order (`natord`). |
@@ -361,15 +366,15 @@ With no selection, transforms apply at the cursor position. They fall back to th
 
 ### 6.6 Quick switcher (`ui/quick_switcher.rs`)
 
-- Opened with `window.open_dialog(..)` containing a gpui-kit `Command` palette. Width 480.
-- Items: every `.md` file in the vault, flattened (`kunotes_core::search::flatten_files`). The label is the name without `.md`. The right-hand hint is the parent folder name in uppercase.
-- Filter: case-insensitive substring on the file name (Command's built-in matching; add the relative path as a keyword).
-- Keys: `up`/`down` move the highlight, `enter` opens the file and closes the dialog, `escape` closes it. Footer hints: "↑↓ move · ↵ open · esc close".
+- A small `QuickSwitcher` view (own search field + `uniform_list`) inside `window.open_dialog(..)`, width 480. gpui-kit's `Command` palette was replaced because its search field can't be padded (it looked cramped).
+- Items: every `.md` file in the vault, flattened (`kunotes_core::search::flatten_files`). The label is the name without `.md` (long names end with "…"). The right-hand hint is the parent folder name in uppercase.
+- Filter: every typed word must appear in "title + vault-relative path" (case-insensitive).
+- Keys (key context `QuickSwitcher`): `up`/`down` move the highlight, `enter` opens the note and closes the dialog, `escape` closes it. Enter is bound in the switcher's own context so it's handled before the dialog's own Enter (which would only close it). Footer hints: "↑↓ move · ↵ open · esc close".
 - Empty state: "No matches".
 
 ### 6.7 Dialogs (`ui/dialogs.rs`)
 
-- **Rename:** a dialog with an `Input` pre-filled with the name (without `.md` for files) and focused with the text selected. Enter confirms and Esc cancels. Invalid names show an inline error and don't close the dialog.
+- **Rename and new items** are edited inline in the tree (§6.2), not in dialogs.
 - **Delete:** an `AlertDialog` titled "Delete?" that names the item, with a destructive "Move to Trash" button and Cancel.
 - **Errors** (I/O failures, name collisions) appear as `window.push_notification(..)`. Nothing fails silently.
 
@@ -540,7 +545,7 @@ A Wayland or X11 session with a working Vulkan driver (`vulkan-loader` plus Mesa
 |---|---|---|
 | Vault | Open a folder via the native picker, reopen the last vault on launch | §4.1, §4.3 |
 | File tree | Folders + `.md` only, folders first, natural sort; click to select, double-click or chevron to expand; keyboard nav; drag-and-drop move; context menu | §6.2, §8.3 |
-| File ops | New file (`Untitled.md`, seeded `# Untitled`), new folder, rename (auto `.md`, validated), delete to OS trash with confirmation | §4.1, §6.7, §8.2 |
+| File ops | New note / folder and rename, named inline in the tree (auto `.md`, validated, taken names refused), delete to OS trash with confirmation | §4.1, §6.2, §6.7, §8.2 |
 | Editor | Live (realtime formatter), Source (highlighted raw markdown), Split, Preview modes on one text buffer; formatter bar, breadcrumb, status bar (Ln/Col, characters) | §6.3, §6.4, §6.9 |
 | Preview | CommonMark: headings, emphasis, inline code, code blocks, nested lists, task lists, blockquotes, links, rules; selectable text | §6.5 |
 | Saving | Debounced atomic autosave, flushed on switch and quit | §7.1 |

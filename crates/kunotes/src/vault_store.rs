@@ -19,6 +19,8 @@ use crate::watcher::{self, VaultWatcher};
 pub enum VaultEvent {
     /// The folder tree was rescanned.
     TreeChanged,
+    /// A note was just created; the editor takes focus so the user can type.
+    NoteCreated,
     /// A file operation failed; the message is meant for the user.
     Error(String),
 }
@@ -211,6 +213,16 @@ impl VaultStore {
         cx.notify();
     }
 
+    /// Expands `folder` and every folder above it (no-op for the vault root).
+    pub fn expand_folder_and_parents(&mut self, folder: &Path, cx: &mut Context<Self>) {
+        if self.root.as_deref() == Some(folder) {
+            return;
+        }
+        self.reveal(folder);
+        self.expanded.insert(folder.to_path_buf());
+        cx.notify();
+    }
+
     pub fn toggle_expanded(&mut self, folder: PathBuf, cx: &mut Context<Self>) {
         let expanded = !self.expanded.contains(&folder);
         self.set_expanded(folder, expanded, cx);
@@ -227,38 +239,50 @@ impl VaultStore {
     // Each one changes the disk through `kunotes_core::fs_ops`, then rescans.
     // Failures are sent as `VaultEvent::Error` so the window can show them.
 
-    /// Creates a new note in `folder` (or the vault root) and selects it.
-    pub fn create_file(&mut self, folder: Option<PathBuf>, cx: &mut Context<Self>) {
-        let Some(folder) = folder.or_else(|| self.root.clone()) else {
-            return;
-        };
-        match fs_ops::create_file(&folder, "Untitled") {
-            Ok(path) => {
-                self.reveal(&path);
-                self.select(path, false, cx);
-                self.refresh(cx);
-            }
-            Err(error) => cx.emit(VaultEvent::Error(error.to_string())),
-        }
+    /// Creates a note named `name` in `folder` and opens it. Returns the error
+    /// message if it failed, so the inline name field can stay open and show it.
+    pub fn create_note(
+        &mut self,
+        folder: &Path,
+        name: &str,
+        cx: &mut Context<Self>,
+    ) -> Result<(), String> {
+        let path = fs_ops::create_file_named(folder, name).map_err(|error| error.to_string())?;
+        self.reveal(&path);
+        self.select(path, false, cx);
+        self.refresh(cx);
+        cx.emit(VaultEvent::NoteCreated);
+        Ok(())
     }
 
-    /// Creates a new folder in `folder` (or the vault root) and selects it.
-    pub fn create_folder(&mut self, folder: Option<PathBuf>, cx: &mut Context<Self>) {
-        let Some(folder) = folder.or_else(|| self.root.clone()) else {
-            return;
+    /// Creates a folder named `name` in `folder` and selects it.
+    pub fn create_folder(
+        &mut self,
+        folder: &Path,
+        name: &str,
+        cx: &mut Context<Self>,
+    ) -> Result<(), String> {
+        let path = fs_ops::create_folder_named(folder, name).map_err(|error| error.to_string())?;
+        self.reveal(&path);
+        self.select(path, true, cx);
+        self.refresh(cx);
+        Ok(())
+    }
+
+    /// The folder a new item should go in: the selected folder, the selected
+    /// note's folder, or the vault root.
+    pub fn target_folder(&self) -> Option<PathBuf> {
+        let root = self.root.clone()?;
+        let folder = match self.selected_path.as_deref() {
+            Some(path) if path.is_dir() => path.to_path_buf(),
+            Some(path) => path.parent().map(Path::to_path_buf).unwrap_or(root),
+            None => root,
         };
-        match fs_ops::create_folder(&folder, "New Folder") {
-            Ok(path) => {
-                self.reveal(&path);
-                self.select(path, true, cx);
-                self.refresh(cx);
-            }
-            Err(error) => cx.emit(VaultEvent::Error(error.to_string())),
-        }
+        Some(folder)
     }
 
     /// Renames a file or folder. Returns the error message if it failed,
-    /// so the rename dialog can stay open and show it.
+    /// so the inline name field can stay open and show it.
     pub fn rename(
         &mut self,
         path: &Path,

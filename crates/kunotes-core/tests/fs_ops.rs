@@ -5,7 +5,8 @@ use std::path::Path;
 
 use kunotes_core::CoreError;
 use kunotes_core::fs_ops::{
-    atomic_write, create_file, create_folder, move_into, rename, unique_path,
+    atomic_write, create_file, create_file_named, create_folder, create_folder_named, move_into,
+    rename, unique_path,
 };
 use kunotes_core::names::NameError;
 use tempfile::tempdir;
@@ -219,4 +220,39 @@ fn trash_moves_file_away() {
     write(&note, "");
     kunotes_core::fs_ops::trash(&note).unwrap();
     assert!(!note.exists());
+}
+
+#[test]
+fn create_file_named_uses_the_typed_name_and_refuses_duplicates() {
+    let dir = tempdir().unwrap();
+    let note = create_file_named(dir.path(), "  Ideas ").unwrap();
+    assert_eq!(note, dir.path().join("Ideas.md"));
+    assert_eq!(fs::read_to_string(&note).unwrap(), "# Ideas\n");
+
+    assert_eq!(
+        create_file_named(dir.path(), "Report.md").unwrap(),
+        dir.path().join("Report.md")
+    );
+    assert!(matches!(
+        create_file_named(dir.path(), "Ideas"),
+        Err(CoreError::AlreadyExists(_))
+    ));
+    assert!(matches!(
+        create_file_named(dir.path(), "a/b"),
+        Err(CoreError::InvalidName(_))
+    ));
+}
+
+#[test]
+fn create_folder_named_uses_the_typed_name_and_refuses_duplicates() {
+    let dir = tempdir().unwrap();
+    assert_eq!(
+        create_folder_named(dir.path(), "Work").unwrap(),
+        dir.path().join("Work")
+    );
+    assert!(dir.path().join("Work").is_dir());
+    assert!(matches!(
+        create_folder_named(dir.path(), "Work"),
+        Err(CoreError::AlreadyExists(_))
+    ));
 }

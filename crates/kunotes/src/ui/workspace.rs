@@ -52,11 +52,18 @@ impl Workspace {
                 this.save_open_note(cx);
                 async {}
             }),
-            // Show file operation errors as a notification.
-            cx.subscribe_in(&vault, window, |_, _, event, window, cx| {
-                if let VaultEvent::Error(message) = event {
-                    window.push_notification(message.clone(), cx);
+            // Show file operation errors; focus the editor after creating a note.
+            cx.subscribe_in(&vault, window, |_, _, event, window, cx| match event {
+                VaultEvent::Error(message) => window.push_notification(message.clone(), cx),
+                VaultEvent::NoteCreated => {
+                    // Deferred: the new note's pane is created by the vault observer first.
+                    cx.defer_in(window, |workspace, window, cx| {
+                        if let Some(pane) = &workspace.editor {
+                            pane.update(cx, |pane, cx| pane.focus(window, cx));
+                        }
+                    });
                 }
+                VaultEvent::TreeChanged => {}
             }),
             // Follow the system light/dark setting while the app is running.
             cx.observe_window_appearance(window, |_, window, cx| {
@@ -252,14 +259,19 @@ impl Workspace {
         self.vault.update(cx, |vault, cx| vault.close_vault(cx));
     }
 
-    fn new_file(&mut self, _: &NewFile, _: &mut Window, cx: &mut Context<Self>) {
-        self.vault
-            .update(cx, |vault, cx| vault.create_file(None, cx));
+    fn new_file(&mut self, _: &NewFile, window: &mut Window, cx: &mut Context<Self>) {
+        self.start_new_item(false, window, cx);
     }
 
-    fn new_folder(&mut self, _: &NewFolder, _: &mut Window, cx: &mut Context<Self>) {
-        self.vault
-            .update(cx, |vault, cx| vault.create_folder(None, cx));
+    fn new_folder(&mut self, _: &NewFolder, window: &mut Window, cx: &mut Context<Self>) {
+        self.start_new_item(true, window, cx);
+    }
+
+    /// New items are named inline in the tree, so the sidebar must be visible.
+    fn start_new_item(&mut self, is_dir: bool, window: &mut Window, cx: &mut Context<Self>) {
+        self.show_sidebar(cx);
+        self.sidebar
+            .update(cx, |sidebar, cx| sidebar.start_new_item(is_dir, window, cx));
     }
 
     fn rename_selection(
@@ -269,7 +281,16 @@ impl Workspace {
         cx: &mut Context<Self>,
     ) {
         if let Some(path) = self.vault.read(cx).selected_path().map(|p| p.to_path_buf()) {
-            dialogs::rename(self.vault.clone(), path, window, cx);
+            self.show_sidebar(cx);
+            self.sidebar
+                .update(cx, |sidebar, cx| sidebar.start_rename(path, window, cx));
+        }
+    }
+
+    fn show_sidebar(&mut self, cx: &mut Context<Self>) {
+        if !SettingsStore::get(cx).sidebar_visible {
+            SettingsStore::update(cx, |settings| settings.sidebar_visible = true);
+            cx.notify();
         }
     }
 

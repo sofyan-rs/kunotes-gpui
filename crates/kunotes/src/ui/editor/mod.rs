@@ -21,7 +21,7 @@ use gpui_kit::component::input::{Editor, EditorState, InputEvent};
 use gpui_kit::component::resizable::{h_resizable, resizable_panel};
 use gpui_kit::component::{ActiveTheme as _, Icon, Sizable as _, h_flex, v_flex};
 use gpui_kit::{
-    AnyElement, AppContext as _, Context, Entity, EventEmitter, InteractiveElement as _,
+    AnyElement, App, AppContext as _, Context, Entity, EventEmitter, InteractiveElement as _,
     IntoElement, ParentElement as _, Render, SharedString, Styled as _, Subscription, Task, Window,
     div, prelude::FluentBuilder as _, px,
 };
@@ -170,6 +170,12 @@ impl EditorPane {
     /// The note's display name, e.g. "Plan" for `Plan.md`.
     pub fn title(&self) -> String {
         paths::note_title(&self.path)
+    }
+
+    /// Puts the text cursor in the editor.
+    pub fn focus(&self, window: &mut Window, cx: &mut App) {
+        self.editor
+            .update(cx, |editor, cx| editor.focus(window, cx));
     }
 
     /// The note was renamed or moved on disk; keep editing it at its new path.

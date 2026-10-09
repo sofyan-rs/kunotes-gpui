@@ -27,6 +27,9 @@ actions!(
     ]
 );
 
+// Quick switcher list navigation. Only active while the switcher is open.
+actions!(quick_switcher, [SwitcherUp, SwitcherDown, SwitcherOpen]);
+
 // Editor commands. Only active while the editor pane has focus.
 actions!(editor, [SaveNow, FormatBold, FormatItalic, FormatLink]);
 
@@ -47,6 +50,9 @@ pub const WORKSPACE: &str = "Workspace";
 
 /// Key context of the editor pane (editor, formatter bar, preview).
 pub const EDITOR: &str = "EditorPane";
+
+/// Key context of the quick switcher dialog.
+pub const QUICK_SWITCHER: &str = "QuickSwitcher";
 
 /// Key context of the file tree. Bindings here only work while the tree has focus,
 /// so e.g. Backspace deletes a file only when you're in the tree, never while typing.
@@ -69,6 +75,10 @@ pub fn bind_keys(cx: &mut App) {
         KeyBinding::new("secondary-b", FormatBold, Some(EDITOR)),
         KeyBinding::new("secondary-i", FormatItalic, Some(EDITOR)),
         KeyBinding::new("secondary-shift-k", FormatLink, Some(EDITOR)),
+        KeyBinding::new("up", SwitcherUp, Some(QUICK_SWITCHER)),
+        KeyBinding::new("down", SwitcherDown, Some(QUICK_SWITCHER)),
+        // Caught here, before the dialog's own Enter (which would just close it).
+        KeyBinding::new("enter", SwitcherOpen, Some(QUICK_SWITCHER)),
         KeyBinding::new("up", SelectPrevious, Some(FILE_TREE)),
         KeyBinding::new("down", SelectNext, Some(FILE_TREE)),
         KeyBinding::new("right", ExpandFolder, Some(FILE_TREE)),

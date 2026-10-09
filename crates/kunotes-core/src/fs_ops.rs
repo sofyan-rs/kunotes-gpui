@@ -45,6 +45,39 @@ pub fn create_file(dir: &Path, base: &str) -> Result<PathBuf> {
     Ok(path)
 }
 
+/// Creates a note with exactly the name the user typed (`.md` is added unless it's
+/// already there), starting with a matching heading. Fails if the name is taken.
+pub fn create_file_named(dir: &Path, name: &str) -> Result<PathBuf> {
+    let mut name = name.trim().to_string();
+    validate_name(&name)?;
+    if !name.to_lowercase().ends_with(".md") {
+        name.push_str(".md");
+    }
+    let path = dir.join(&name);
+    if exists(&path) {
+        return Err(CoreError::AlreadyExists(path));
+    }
+    let seed = format!("# {}\n", note_title(&path));
+    let mut file = OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&path)?;
+    file.write_all(seed.as_bytes())?;
+    Ok(path)
+}
+
+/// Creates a folder with exactly the name the user typed. Fails if the name is taken.
+pub fn create_folder_named(dir: &Path, name: &str) -> Result<PathBuf> {
+    let name = name.trim();
+    validate_name(name)?;
+    let path = dir.join(name);
+    if exists(&path) {
+        return Err(CoreError::AlreadyExists(path));
+    }
+    fs::create_dir(&path)?;
+    Ok(path)
+}
+
 /// Creates a new folder in `dir` named `base` (or `base 2`, ...). Returns the new path.
 pub fn create_folder(dir: &Path, base: &str) -> Result<PathBuf> {
     validate_name(base)?;

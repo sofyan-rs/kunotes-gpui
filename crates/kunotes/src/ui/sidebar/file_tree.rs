@@ -2,7 +2,9 @@
 //!
 //! - Click selects; double-click (or the chevron) expands a folder.
 //! - Arrow keys move and expand/collapse, Enter opens, F2 renames, Backspace/Delete trashes.
-//! - Right-click shows a context menu; rows can be dragged onto folders.
+//! - Right-click shows a context menu (`context_menu.rs`); rows can be dragged onto folders.
+//! - Renaming and new items are edited inline (`inline_edit.rs`).
+//! - Keyboard navigation lives in `keyboard.rs`.
 //!
 //! It draws the flat list from `kunotes_core::search::visible_rows`, so only
 //! expanded folders contribute rows.
@@ -12,22 +14,20 @@ use std::path::{Path, PathBuf};
 
 use gpui_kit::assets::IconName;
 use gpui_kit::component::list::ListItem;
-use gpui_kit::component::menu::{ContextMenuExt as _, PopupMenu, PopupMenuItem};
+use gpui_kit::component::menu::ContextMenuExt as _;
 use gpui_kit::component::{ActiveTheme as _, Icon, Sizable as _, h_flex};
 use gpui_kit::{
-    AnyElement, App, AppContext as _, ClickEvent, ClipboardItem, Context, ElementId, Entity,
-    FocusHandle, InteractiveElement as _, IntoElement, ParentElement as _, Render, ScrollStrategy,
+    AnyElement, AppContext as _, ClickEvent, Context, ElementId, Entity, FocusHandle,
+    InteractiveElement as _, IntoElement, ParentElement as _, Render,
     StatefulInteractiveElement as _, Styled as _, TestSupportExt as _, UniformListScrollHandle,
     Window, div, px, uniform_list,
 };
-use kunotes_core::paths::{can_move_into, relative_path};
+use kunotes_core::paths::can_move_into;
 use kunotes_core::search::{VisibleRow, visible_rows};
 
-use crate::actions::{
-    CollapseFolder, ExpandFolder, FILE_TREE, OpenSelected, SelectNext, SelectPrevious,
-};
-use crate::platform;
-use crate::ui::dialogs;
+use super::context_menu;
+use super::inline_edit::InlineEdit;
+use crate::actions::FILE_TREE;
 use crate::vault_store::VaultStore;
 
 const ROW_HEIGHT: f32 = 26.;
@@ -57,12 +57,24 @@ impl Render for DragPreview {
     }
 }
 
+/// Where the "new note/folder" name field is drawn.
+#[derive(Clone, Copy)]
+struct NewItemSlot {
+    /// Position in the drawn list (the other rows shift down by one after it).
+    index: usize,
+    depth: usize,
+    is_dir: bool,
+}
+
 pub struct FileTree {
-    vault: Entity<VaultStore>,
-    focus_handle: FocusHandle,
-    scroll_handle: UniformListScrollHandle,
+    pub(super) vault: Entity<VaultStore>,
+    pub(super) focus_handle: FocusHandle,
+    pub(super) scroll_handle: UniformListScrollHandle,
     /// The rows drawn in the last render, used by keyboard navigation.
-    rows: Vec<VisibleRow>,
+    pub(super) rows: Vec<VisibleRow>,
+    /// The inline name field (rename or new item), if one is open.
+    pub(super) editing: Option<InlineEdit>,
+    new_item_slot: Option<NewItemSlot>,
 }
 
 impl FileTree {
@@ -73,84 +85,8 @@ impl FileTree {
             focus_handle: cx.focus_handle(),
             scroll_handle: UniformListScrollHandle::new(),
             rows: Vec::new(),
-        }
-    }
-
-    fn selected_index(&self, cx: &App) -> Option<usize> {
-        let selected = self.vault.read(cx).selected_path()?;
-        self.rows.iter().position(|row| row.path == selected)
-    }
-
-    fn select_index(&mut self, index: usize, cx: &mut Context<Self>) {
-        let Some(row) = self.rows.get(index).cloned() else {
-            return;
-        };
-        self.vault
-            .update(cx, |vault, cx| vault.select(row.path, row.is_dir, cx));
-        self.scroll_handle
-            .scroll_to_item(index, ScrollStrategy::Center);
-    }
-
-    // ----- Keyboard actions -----
-
-    fn select_previous(&mut self, _: &SelectPrevious, _: &mut Window, cx: &mut Context<Self>) {
-        let index = match self.selected_index(cx) {
-            Some(index) => index.saturating_sub(1),
-            None => self.rows.len().saturating_sub(1),
-        };
-        self.select_index(index, cx);
-    }
-
-    fn select_next(&mut self, _: &SelectNext, _: &mut Window, cx: &mut Context<Self>) {
-        let index = match self.selected_index(cx) {
-            Some(index) => (index + 1).min(self.rows.len().saturating_sub(1)),
-            None => 0,
-        };
-        self.select_index(index, cx);
-    }
-
-    /// Right arrow: expand a collapsed folder, or move into an expanded one.
-    fn expand_folder(&mut self, _: &ExpandFolder, _: &mut Window, cx: &mut Context<Self>) {
-        let Some(index) = self.selected_index(cx) else {
-            return;
-        };
-        let row = self.rows[index].clone();
-        if !row.is_dir {
-            return;
-        }
-        if row.is_expanded {
-            self.select_index(index + 1, cx);
-        } else {
-            self.vault
-                .update(cx, |vault, cx| vault.set_expanded(row.path, true, cx));
-        }
-    }
-
-    /// Left arrow: collapse an expanded folder, or jump to the parent folder.
-    fn collapse_folder(&mut self, _: &CollapseFolder, _: &mut Window, cx: &mut Context<Self>) {
-        let Some(index) = self.selected_index(cx) else {
-            return;
-        };
-        let row = self.rows[index].clone();
-        if row.is_dir && row.is_expanded {
-            self.vault
-                .update(cx, |vault, cx| vault.set_expanded(row.path, false, cx));
-        } else if let Some(parent) = row.path.parent()
-            && let Some(parent_index) = self.rows.iter().position(|r| r.path == parent)
-        {
-            self.select_index(parent_index, cx);
-        }
-    }
-
-    /// Enter: toggle a folder, or open a file (selecting it already opens it).
-    fn open_selected(&mut self, _: &OpenSelected, _: &mut Window, cx: &mut Context<Self>) {
-        let Some(index) = self.selected_index(cx) else {
-            return;
-        };
-        let row = self.rows[index].clone();
-        if row.is_dir {
-            self.vault
-                .update(cx, |vault, cx| vault.toggle_expanded(row.path, cx));
+            editing: None,
+            new_item_slot: None,
         }
     }
 
@@ -189,13 +125,67 @@ impl FileTree {
         cx: &mut Context<Self>,
     ) -> Vec<AnyElement> {
         let selected = self.vault.read(cx).selected_path().map(Path::to_path_buf);
+        let slot = self.new_item_slot;
         range
-            .filter_map(|index| self.rows.get(index).cloned())
-            .map(|row| {
-                let is_selected = selected.as_deref() == Some(row.path.as_path());
-                self.render_row(row, is_selected, cx)
+            .filter_map(|index| match slot {
+                Some(slot) if index == slot.index => Some(self.render_new_item_row(slot, cx)),
+                _ => {
+                    // Rows after the new-item field are shifted down by one.
+                    let row_index = match slot {
+                        Some(slot) if index > slot.index => index - 1,
+                        _ => index,
+                    };
+                    let row = self.rows.get(row_index)?.clone();
+                    let is_selected = selected.as_deref() == Some(row.path.as_path());
+                    Some(self.render_row(row, is_selected, cx))
+                }
             })
             .collect()
+    }
+
+    /// The row holding the name field for a new note or folder.
+    fn render_new_item_row(&self, slot: NewItemSlot, cx: &mut Context<Self>) -> AnyElement {
+        let theme = cx.theme();
+        let (icon, color) = if slot.is_dir {
+            (IconName::Folder, theme.blue)
+        } else {
+            (IconName::FileText, theme.muted_foreground)
+        };
+        h_flex()
+            .id("new-item-row")
+            .w_full()
+            .h(px(ROW_HEIGHT))
+            .pl(px(6. + ROW_INDENT * slot.depth as f32))
+            .pr_2()
+            .gap_1()
+            .text_sm()
+            .child(div().w(px(14.)))
+            .child(Icon::new(icon).small().text_color(color))
+            .children(self.render_name_input(cx))
+            .into_any_element()
+    }
+
+    /// Works out where the new-item field goes: the top of its folder's children.
+    fn place_new_item(&mut self, root: Option<&Path>) {
+        self.new_item_slot = self
+            .editing
+            .as_ref()
+            .and_then(|edit| edit.new_item())
+            .and_then(|(folder, is_dir)| {
+                if Some(folder) == root {
+                    return Some(NewItemSlot {
+                        index: 0,
+                        depth: 0,
+                        is_dir,
+                    });
+                }
+                let parent = self.rows.iter().position(|row| row.path == folder)?;
+                Some(NewItemSlot {
+                    index: parent + 1,
+                    depth: self.rows[parent].depth + 1,
+                    is_dir,
+                })
+            });
     }
 
     fn render_row(&self, row: VisibleRow, is_selected: bool, cx: &mut Context<Self>) -> AnyElement {
@@ -227,7 +217,17 @@ impl FileTree {
         });
 
         let drop_color = theme.drop_target;
-        let label = row.name.clone();
+        let renaming = self
+            .editing
+            .as_ref()
+            .and_then(|edit| edit.renaming())
+            .is_some_and(|path| path == row.path);
+        let label: AnyElement = if renaming {
+            self.render_name_input(cx)
+                .unwrap_or_else(|| row.name.clone().into_any_element())
+        } else {
+            row.name.clone().into_any_element()
+        };
         let drag = DraggedEntry {
             path: row.path.clone(),
             name: row.name.clone(),
@@ -275,10 +275,17 @@ impl FileTree {
                 }
             }));
 
-        let menu_vault = self.vault.clone();
-        let menu_path = row.path.clone();
+        let (menu_tree, menu_vault, menu_path) =
+            (cx.entity(), self.vault.clone(), row.path.clone());
         let item = item.context_menu(move |menu, _, cx| {
-            context_menu(menu, menu_vault.clone(), menu_path.clone(), is_dir, cx)
+            context_menu::build(
+                menu,
+                menu_tree.clone(),
+                menu_vault.clone(),
+                menu_path.clone(),
+                is_dir,
+                cx,
+            )
         });
 
         // The wrapper gives the row a stable ID that UI tests can find and click.
@@ -298,6 +305,8 @@ impl Render for FileTree {
             .map(|tree| visible_rows(tree, vault.expanded()))
             .unwrap_or_default();
         let root = vault.root().map(Path::to_path_buf);
+        self.place_new_item(root.as_deref());
+        let row_count = self.rows.len() + usize::from(self.new_item_slot.is_some());
         let highlight_root = root.clone();
         let drop_color = cx.theme().drop_target;
 
@@ -327,14 +336,10 @@ impl Render for FileTree {
             }))
             .child(
                 // `uniform_list` only draws the rows on screen, so big vaults stay fast.
-                uniform_list(
-                    "file-tree",
-                    self.rows.len(),
-                    cx.processor(Self::render_rows),
-                )
-                .track_scroll(&self.scroll_handle)
-                .size_full()
-                .py_1(),
+                uniform_list("file-tree", row_count, cx.processor(Self::render_rows))
+                    .track_scroll(&self.scroll_handle)
+                    .size_full()
+                    .py_1(),
             )
     }
 }
@@ -346,64 +351,4 @@ pub fn row_id(path: &Path) -> ElementId {
 
 fn item_id(path: &Path) -> ElementId {
     ElementId::Name(format!("item:{}", path.display()).into())
-}
-
-/// The right-click menu for one row.
-fn context_menu(
-    menu: PopupMenu,
-    vault: Entity<VaultStore>,
-    path: PathBuf,
-    is_dir: bool,
-    cx: &mut Context<PopupMenu>,
-) -> PopupMenu {
-    let root = vault.read(cx).root().map(Path::to_path_buf);
-    let mut menu = menu;
-
-    if is_dir {
-        let (v, p) = (vault.clone(), path.clone());
-        menu = menu.item(PopupMenuItem::new("New Note").on_click(move |_, _, cx| {
-            v.update(cx, |vault, cx| vault.create_file(Some(p.clone()), cx));
-        }));
-        let (v, p) = (vault.clone(), path.clone());
-        menu = menu
-            .item(PopupMenuItem::new("New Folder").on_click(move |_, _, cx| {
-                v.update(cx, |vault, cx| vault.create_folder(Some(p.clone()), cx));
-            }))
-            .separator();
-    }
-
-    let (v, p) = (vault.clone(), path.clone());
-    menu = menu.item(
-        PopupMenuItem::new("Rename…").on_click(move |_, window, cx| {
-            dialogs::rename(v.clone(), p.clone(), window, cx);
-        }),
-    );
-    let (v, p) = (vault.clone(), path.clone());
-    menu = menu
-        .item(PopupMenuItem::new("Delete").on_click(move |_, window, cx| {
-            dialogs::confirm_trash(v.clone(), p.clone(), window, cx);
-        }))
-        .separator();
-
-    let p = path.clone();
-    menu = menu.item(
-        PopupMenuItem::new(platform::reveal_label()).on_click(move |_, _, _| {
-            if let Err(error) = opener::reveal(&p) {
-                log::warn!("couldn't reveal {}: {error}", p.display());
-            }
-        }),
-    );
-    let absolute = path.to_string_lossy().into_owned();
-    menu = menu.item(PopupMenuItem::new("Copy Path").on_click(move |_, _, cx| {
-        cx.write_to_clipboard(ClipboardItem::new_string(absolute.clone()));
-    }));
-    let relative = root
-        .as_deref()
-        .and_then(|root| relative_path(root, &path))
-        .unwrap_or_else(|| path.to_string_lossy().into_owned());
-    menu.item(
-        PopupMenuItem::new("Copy Relative Path").on_click(move |_, _, cx| {
-            cx.write_to_clipboard(ClipboardItem::new_string(relative.clone()));
-        }),
-    )
 }

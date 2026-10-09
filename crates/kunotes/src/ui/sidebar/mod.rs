@@ -1,8 +1,13 @@
 //! The sidebar: a row of action buttons on top, the vault's file tree below.
 
+mod context_menu;
 mod file_tree;
 #[cfg(test)]
 mod file_tree_tests;
+mod inline_edit;
+mod keyboard;
+
+use std::path::PathBuf;
 
 use gpui_kit::assets::IconName;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
@@ -27,6 +32,22 @@ impl Sidebar {
         // Redraw when the vault changes (e.g. buttons become enabled).
         cx.observe(&vault, |_, _, cx| cx.notify()).detach();
         Sidebar { vault, file_tree }
+    }
+
+    /// Starts typing the name of a new note or folder in the tree, inside the
+    /// selected folder (or the selected note's folder, or the vault root).
+    pub fn start_new_item(&mut self, is_dir: bool, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(folder) = self.vault.read(cx).target_folder() else {
+            return;
+        };
+        self.file_tree
+            .update(cx, |tree, cx| tree.start_new(folder, is_dir, window, cx));
+    }
+
+    /// Starts renaming `path` inline in the tree.
+    pub fn start_rename(&mut self, path: PathBuf, window: &mut Window, cx: &mut Context<Self>) {
+        self.file_tree
+            .update(cx, |tree, cx| tree.start_rename(path, window, cx));
     }
 
     fn render_header(&self, has_vault: bool, cx: &mut Context<Self>) -> impl IntoElement {

@@ -8,7 +8,9 @@ use gpui_kit::test::TestWindowExt as _;
 use gpui_kit::{TestAppContext, px};
 
 use super::file_tree::row_id;
-use crate::ui::test_helpers::{in_window, is_expanded, selected, setup};
+use std::path::Path;
+
+use crate::ui::test_helpers::{Setup, in_window, is_expanded, selected, setup};
 
 #[gpui_kit::test]
 fn click_selects_and_double_click_expands(cx: &mut TestAppContext) {
@@ -83,29 +85,6 @@ fn dragging_a_note_onto_a_folder_moves_it(cx: &mut TestAppContext) {
 }
 
 #[gpui_kit::test]
-fn f2_renames_the_selected_note(cx: &mut TestAppContext) {
-    let s = setup(cx);
-    let welcome = s.path("Welcome.md");
-
-    in_window(&s, cx, |window, cx| window.click(row_id(&welcome), cx));
-    in_window(&s, cx, |window, cx| window.press("f2", cx));
-    in_window(&s, cx, |window, cx| {
-        assert!(window.has_active_dialog(cx));
-        window.input("Hello", cx); // replaces the pre-selected name
-    });
-    in_window(&s, cx, |window, cx| window.press("enter", cx));
-
-    assert!(!welcome.exists());
-    let renamed = s.path("Hello.md");
-    assert_eq!(fs::read_to_string(&renamed).unwrap(), "# Welcome\n");
-    assert_eq!(
-        selected(&s, cx),
-        Some(renamed),
-        "selection follows the rename"
-    );
-}
-
-#[gpui_kit::test]
 fn backspace_asks_before_trashing_and_escape_cancels(cx: &mut TestAppContext) {
     let s = setup(cx);
     let welcome = s.path("Welcome.md");
@@ -119,22 +98,6 @@ fn backspace_asks_before_trashing_and_escape_cancels(cx: &mut TestAppContext) {
     in_window(&s, cx, |window, cx| assert!(!window.has_active_dialog(cx)));
 
     assert!(welcome.exists(), "cancel keeps the file");
-}
-
-#[gpui_kit::test]
-fn invalid_rename_keeps_the_dialog_open(cx: &mut TestAppContext) {
-    let s = setup(cx);
-    let welcome = s.path("Welcome.md");
-
-    in_window(&s, cx, |window, cx| window.click(row_id(&welcome), cx));
-    in_window(&s, cx, |window, cx| window.press("f2", cx));
-    in_window(&s, cx, |window, cx| window.input("a/b", cx));
-    in_window(&s, cx, |window, cx| window.press("enter", cx));
-
-    in_window(&s, cx, |window, cx| {
-        assert!(window.has_active_dialog(cx), "the user can fix the name");
-    });
-    assert!(welcome.exists());
 }
 
 #[gpui_kit::test]
@@ -189,4 +152,139 @@ fn dropping_on_a_note_does_nothing(cx: &mut TestAppContext) {
 
     assert!(plan.exists());
     assert!(!s.path("Plan.md").exists());
+}
+
+/// True while the inline name field is shown somewhere in the tree.
+fn name_field_open(s: &Setup, cx: &mut TestAppContext) -> bool {
+    let mut open = false;
+    in_window(s, cx, |window, _| {
+        open = window.try_find("tree-name-input").is_some()
+    });
+    open
+}
+
+#[gpui_kit::test]
+fn f2_renames_inline_keeping_the_extension(cx: &mut TestAppContext) {
+    let s = setup(cx);
+    let welcome = s.path("Welcome.md");
+
+    in_window(&s, cx, |window, cx| window.click(row_id(&welcome), cx));
+    in_window(&s, cx, |window, cx| window.press("f2", cx));
+    assert!(name_field_open(&s, cx));
+    in_window(&s, cx, |window, cx| window.input("Hello", cx)); // replaces "Welcome", keeps ".md"
+    in_window(&s, cx, |window, cx| window.press("enter", cx));
+
+    assert!(!name_field_open(&s, cx));
+    assert!(!welcome.exists());
+    let renamed = s.path("Hello.md");
+    assert_eq!(fs::read_to_string(&renamed).unwrap(), "# Welcome\n");
+    assert_eq!(
+        selected(&s, cx),
+        Some(renamed),
+        "selection follows the rename"
+    );
+}
+
+#[gpui_kit::test]
+fn invalid_name_keeps_the_field_open(cx: &mut TestAppContext) {
+    let s = setup(cx);
+    let welcome = s.path("Welcome.md");
+
+    in_window(&s, cx, |window, cx| window.click(row_id(&welcome), cx));
+    in_window(&s, cx, |window, cx| window.press("f2", cx));
+    in_window(&s, cx, |window, cx| window.input("a/b", cx));
+    in_window(&s, cx, |window, cx| window.press("enter", cx));
+
+    assert!(name_field_open(&s, cx), "the user can fix the name");
+    assert!(welcome.exists());
+}
+
+#[gpui_kit::test]
+fn escape_cancels_a_rename(cx: &mut TestAppContext) {
+    let s = setup(cx);
+    let welcome = s.path("Welcome.md");
+
+    in_window(&s, cx, |window, cx| window.click(row_id(&welcome), cx));
+    in_window(&s, cx, |window, cx| window.press("f2", cx));
+    in_window(&s, cx, |window, cx| window.input("Changed", cx));
+    in_window(&s, cx, |window, cx| window.press("escape", cx));
+
+    assert!(!name_field_open(&s, cx));
+    assert!(welcome.exists());
+    assert!(!s.path("Changed.md").exists());
+}
+
+#[gpui_kit::test]
+fn new_note_is_named_inline_in_the_selected_folder(cx: &mut TestAppContext) {
+    let s = setup(cx);
+    let projects = s.path("Projects");
+
+    in_window(&s, cx, |window, cx| window.click(row_id(&projects), cx));
+    in_window(&s, cx, |window, cx| window.press("secondary-n", cx));
+    assert!(name_field_open(&s, cx));
+    assert!(is_expanded(&s, cx, &projects), "the target folder opens");
+    in_window(&s, cx, |window, cx| window.input("Ideas", cx));
+    in_window(&s, cx, |window, cx| window.press("enter", cx));
+
+    let note = s.path("Projects/Ideas.md");
+    assert_eq!(fs::read_to_string(&note).unwrap(), "# Ideas\n");
+    let opened = s
+        .vault
+        .read_with(cx, |vault, _| vault.selected_file().map(Path::to_path_buf));
+    assert_eq!(opened, Some(note), "the new note opens in the editor");
+}
+
+#[gpui_kit::test]
+fn new_folder_goes_next_to_the_selected_note(cx: &mut TestAppContext) {
+    let s = setup(cx);
+    let projects = s.path("Projects");
+
+    in_window(&s, cx, |window, cx| {
+        window.double_click(row_id(&projects), cx)
+    });
+    in_window(&s, cx, |window, cx| {
+        window.click(row_id(&s.path("Projects/Plan.md")), cx)
+    });
+    in_window(&s, cx, |window, cx| window.press("secondary-shift-n", cx));
+    in_window(&s, cx, |window, cx| window.input("Drafts", cx));
+    in_window(&s, cx, |window, cx| window.press("enter", cx));
+
+    assert!(s.path("Projects/Drafts").is_dir());
+}
+
+#[gpui_kit::test]
+fn a_taken_name_is_refused(cx: &mut TestAppContext) {
+    let s = setup(cx);
+
+    in_window(&s, cx, |window, cx| window.press("secondary-n", cx));
+    in_window(&s, cx, |window, cx| window.input("Welcome", cx));
+    in_window(&s, cx, |window, cx| window.press("enter", cx));
+
+    assert!(name_field_open(&s, cx));
+    assert_eq!(
+        fs::read_to_string(s.path("Welcome.md")).unwrap(),
+        "# Welcome\n",
+        "the existing note is untouched"
+    );
+}
+
+#[gpui_kit::test]
+fn clicking_elsewhere_confirms_and_an_empty_name_cancels(cx: &mut TestAppContext) {
+    let s = setup(cx);
+    let welcome = s.path("Welcome.md");
+
+    in_window(&s, cx, |window, cx| window.press("secondary-n", cx));
+    in_window(&s, cx, |window, cx| window.input("Later", cx));
+    in_window(&s, cx, |window, cx| window.click(row_id(&welcome), cx));
+    // GPUI reports focus loss when the next frame is drawn; draw it.
+    in_window(&s, cx, |_, _| {});
+    assert!(
+        s.path("Later.md").exists(),
+        "focus leaving the field confirms it"
+    );
+
+    in_window(&s, cx, |window, cx| window.press("secondary-n", cx));
+    in_window(&s, cx, |window, cx| window.click(row_id(&welcome), cx));
+    in_window(&s, cx, |_, _| {});
+    assert!(!name_field_open(&s, cx), "an empty field just closes");
 }

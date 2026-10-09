@@ -72,6 +72,11 @@ pub fn setup(cx: &mut TestAppContext) -> Setup {
         .unwrap()
     });
 
+    // Make it the active window, like a real one the user is clicking in. GPUI only
+    // reports focus loss (e.g. "clicked away from a text field") in an active window.
+    cx.update_window(window, |_, window, _| window.activate_window())
+        .unwrap();
+
     let vault = workspace.read_with(cx, |workspace, _| workspace.vault());
     let root = dir.path().to_path_buf();
     vault.update(cx, |vault, cx| {
