@@ -104,9 +104,38 @@ pub fn ancestors_within(root: &Path, path: &Path) -> Vec<PathBuf> {
     folders
 }
 
+/// The file an image link in a note points to, or `None` for web and data
+/// links. Relative links (like `.img/photo.png`) are relative to the note's folder.
+pub fn image_file(note_dir: &Path, link: &str) -> Option<PathBuf> {
+    if link.contains("://") || link.starts_with("data:") {
+        return None;
+    }
+    // Markdown links use `/`; split so the path is built natively on every OS.
+    let mut path = if link.starts_with('/') {
+        PathBuf::from("/")
+    } else {
+        note_dir.to_path_buf()
+    };
+    for part in link.split('/').filter(|part| !part.is_empty()) {
+        path.push(part);
+    }
+    Some(path)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn image_links_resolve_next_to_the_note() {
+        let dir = Path::new("vault").join("Projects");
+        assert_eq!(
+            image_file(&dir, ".img/cat.png"),
+            Some(dir.join(".img").join("cat.png"))
+        );
+        assert_eq!(image_file(&dir, "https://x.dev/cat.png"), None);
+        assert_eq!(image_file(&dir, "data:image/png;base64,AAAA"), None);
+    }
 
     fn root() -> PathBuf {
         PathBuf::from("vault")

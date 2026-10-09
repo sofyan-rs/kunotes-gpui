@@ -222,6 +222,7 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done
 - [x] `input.rs`: `EntityInputHandler` (typing, IME marked text, UTF-16 ⇄ UTF-8). Mouse in `mod.rs`: click, drag, double/triple click, shift-click.
 - [x] `keys.rs`: gpui-kit's `Input` key context, so the usual per-OS shortcuts work: char/word/line movement, Up/Down, start/end, delete, clipboard, select all, undo/redo, Enter, Tab.
 - [x] Checkbox click toggles `[ ]` ⇄ `[x]` as one undoable edit, in Live and in Preview.
+- [x] Toolbar: strikethrough, H3, task list, table, image. Images are copied into `.img` next to the note and shown in Live and Preview. Core + UI tests.
 - [x] Right-click menus: Live and Source share one (clipboard, formatting, select all); Preview has Copy and Select All; the sidebar's empty space has New Note / New Folder / Reveal for the vault root. UI tests.
 - [x] Formatter bar reuses `kunotes_core::format` on the Live buffer.
 - [x] Live and Source/Split hand the text over on mode switch; file bytes unchanged (UI test).
@@ -252,7 +253,7 @@ Legend: ✅ verified on that OS (UI/unit test run there, or screenshot) · 🧪 
 | Source / Split / Preview modes | ✅ | ✅ | ✅ |
 | Live mode stage A (styled source) | ⬜ | ⬜ | ⬜ |
 | Live mode stage B (markers hidden off-cursor, checkboxes, IME) | ⬜ | ⬜ | ⬜ |
-| Formatter bar (B, I, H1, H2, link, inline code, code block, quote, bullet, numbered, hr) | ✅ | ✅ | ✅ |
+| Formatter bar (B, I, S, H1–H3, link, image, inline code, code block, quote, bullet, numbered, task, table, hr) | ✅ | ✅ | ✅ |
 | Preview: headings, emphasis, inline code, code blocks, nested lists, task lists, quotes, links, hr | ✅ | ⬜ | ⬜ |
 | Debounced autosave + save on switch/quit, rename-follow, CRLF kept | ✅ | ✅ | ✅ |
 | Breadcrumb, status bar (Ln/Col + characters) | ✅ | ⬜ | ⬜ |
@@ -278,7 +279,7 @@ Legend: ✅ verified on that OS (UI/unit test run there, or screenshot) · 🧪 
 | Source / Split / Preview modes | [ ] | [ ] | [ ] |
 | Live mode stage A (styled source) | [ ] | [ ] | [ ] |
 | Live mode stage B (markers hidden off-cursor, checkboxes, IME) | [ ] | [ ] | [ ] |
-| Formatter bar (B, I, H1, H2, link, inline code, code block, quote, bullet, numbered, hr) | [ ] | [ ] | [ ] |
+| Formatter bar (B, I, S, H1–H3, link, image, inline code, code block, quote, bullet, numbered, task, table, hr) | [ ] | [ ] | [ ] |
 | Preview: headings, emphasis, inline code, code blocks, lists (nested), task lists, quotes, links, hr | [ ] | [ ] | [ ] |
 | Preview text selectable/copyable | [ ] | [ ] | [ ] |
 | Debounced autosave + flush on switch/quit | [ ] | [ ] | [ ] |

@@ -256,3 +256,36 @@ fn create_folder_named_uses_the_typed_name_and_refuses_duplicates() {
         Err(CoreError::AlreadyExists(_))
     ));
 }
+
+#[test]
+fn import_image_copies_next_to_the_note_and_avoids_name_clashes() {
+    let dir = tempfile::tempdir().unwrap();
+    let folder = dir.path().join("Projects");
+    std::fs::create_dir(&folder).unwrap();
+    let note = folder.join("Plan.md");
+    std::fs::write(&note, "# Plan\n").unwrap();
+    let picture = dir.path().join("my photo.PNG");
+    std::fs::write(&picture, b"png bytes").unwrap();
+
+    let first = kunotes_core::fs_ops::import_image(&note, &picture).unwrap();
+    assert_eq!(first, ".img/my-photo.png");
+    assert_eq!(
+        std::fs::read(folder.join(".img").join("my-photo.png")).unwrap(),
+        b"png bytes"
+    );
+    let second = kunotes_core::fs_ops::import_image(&note, &picture).unwrap();
+    assert_eq!(second, ".img/my-photo-2.png");
+}
+
+#[test]
+fn import_image_refuses_files_that_are_not_images() {
+    let dir = tempfile::tempdir().unwrap();
+    let note = dir.path().join("Note.md");
+    let text = dir.path().join("notes.txt");
+    std::fs::write(&text, "hi").unwrap();
+    assert!(kunotes_core::fs_ops::import_image(&note, &text).is_err());
+    assert!(
+        !dir.path().join(".img").exists(),
+        "no folder is made for nothing"
+    );
+}

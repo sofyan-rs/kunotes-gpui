@@ -15,7 +15,8 @@ Open any folder on disk as a "vault", browse it in a sidebar, and edit markdown 
   - **Source:** raw markdown with syntax highlighting, like VS Code or Zed.
   - **Split:** source and rendered preview side by side.
   - **Preview:** read-only rendered document.
-- **Formatter bar:** bold, italic, H1/H2, link, inline code, code block, quote, lists, horizontal rule.
+- **Formatter bar:** bold, italic, strikethrough, H1–H3, link, image, inline code, code block, quote, bullet/numbered/task lists, table, horizontal rule.
+- **Images:** inserted images are copied into a `.img` folder next to the note and shown in Live and Preview.
 - **CommonMark preview:** headings, emphasis, inline code, fenced code blocks, ordered, unordered, and task lists, blockquotes, links, rules.
 - **Autosave:** debounced atomic writes, with no save button and no data loss on quit.
 - **Tabs** like VS Code: preview tabs, pin, close others/to the right/saved/all, drag to reorder, copy path, reveal in file manager; reopened on launch.

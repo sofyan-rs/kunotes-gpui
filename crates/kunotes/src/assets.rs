@@ -18,17 +18,22 @@ gpui_kit::assets::icon_assets!(
         FolderPlus,
         Heading1,
         Heading2,
+        Heading3,
+        ImagePlus,
         Italic,
         Link,
         List,
         ListOrdered,
+        ListTodo,
         NotebookPen,
         PenLine,
         Pin,
         Quote,
         SquareCode,
         SquarePen,
-        Trash
+        Strikethrough,
+        Table,
+        Trash,
     ]
 );
 

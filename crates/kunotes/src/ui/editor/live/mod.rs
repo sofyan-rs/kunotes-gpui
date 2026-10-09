@@ -23,6 +23,8 @@ use gpui_kit::{
     Pixels, Point, Render, ScrollHandle, StatefulInteractiveElement as _, Styled as _,
     TestSupportExt as _, Window, div, prelude::FluentBuilder as _, px,
 };
+use std::path::PathBuf;
+
 use kunotes_core::live_buffer::LiveBuffer;
 
 use super::edit_menu;
@@ -46,6 +48,8 @@ pub struct LiveEditor {
     focus_handle: FocusHandle,
     buffer: LiveBuffer,
     read_only: bool,
+    /// The note's folder: image links are relative to it.
+    note_dir: PathBuf,
     /// Text being composed with an IME (e.g. Japanese input), not yet committed.
     marked_range: Option<std::ops::Range<usize>>,
     /// The layout from the last frame, for clicks and Up/Down.
@@ -69,11 +73,12 @@ impl Focusable for LiveEditor {
 }
 
 impl LiveEditor {
-    pub fn new(text: &str, read_only: bool, cx: &mut Context<Self>) -> Self {
+    pub fn new(text: &str, read_only: bool, note_dir: PathBuf, cx: &mut Context<Self>) -> Self {
         LiveEditor {
             focus_handle: cx.focus_handle(),
             buffer: LiveBuffer::new(text),
             read_only,
+            note_dir,
             marked_range: None,
             last_layout: None,
             last_bounds: None,
@@ -82,6 +87,12 @@ impl LiveEditor {
             scroll_handle: ScrollHandle::new(),
             scroll_to_cursor: false,
         }
+    }
+
+    /// The note moved to another folder; load images from there.
+    pub fn set_note_dir(&mut self, note_dir: PathBuf, cx: &mut Context<Self>) {
+        self.note_dir = note_dir;
+        cx.notify();
     }
 
     pub fn text(&self) -> &str {

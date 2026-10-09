@@ -27,6 +27,9 @@ pub enum CoreError {
     #[error("Settings file is invalid: {0}")]
     Settings(#[from] serde_json::Error),
 
+    #[error("\"{0}\" isn't an image (use PNG, JPEG, GIF, WebP, SVG or BMP)")]
+    NotAnImage(String),
+
     #[error(transparent)]
     Io(#[from] io::Error),
 }

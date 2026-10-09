@@ -12,9 +12,11 @@ mod edit_menu;
 #[cfg(test)]
 mod editor_tests;
 mod formatter_bar;
+mod formatting;
 mod live;
 mod markdown_style;
 mod preview;
+mod saving;
 mod status_bar;
 mod view_mode_switch;
 
@@ -34,16 +36,14 @@ use gpui_kit::{
     InteractiveElement as _, IntoElement, ParentElement as _, Render, SharedString, Styled as _,
     Subscription, Task, TestSupportExt as _, Window, div, prelude::FluentBuilder as _, px,
 };
-use kunotes_core::format::Edit;
-use kunotes_core::fs_ops::atomic_write;
 use kunotes_core::line_ending::{self, LineEnding};
 use kunotes_core::settings::ViewMode;
-use kunotes_core::{cursor, live_buffer, paths};
+use kunotes_core::{cursor, paths};
 
 use live::{LiveEditor, LiveEditorEvent};
 use markdown_style::highlighter_factory;
 
-use crate::actions::{EDITOR, FormatBold, FormatItalic, FormatLink, SaveNow};
+use crate::actions::EDITOR;
 use crate::settings_store::SettingsStore;
 
 /// Save this long after the last keystroke.
@@ -133,7 +133,8 @@ impl EditorPane {
         } = note;
 
         let live_active = uses_live(SettingsStore::get(cx).view_mode, true);
-        let live = cx.new(|cx| LiveEditor::new(&text, !can_save, cx));
+        let note_dir = path.parent().map(Path::to_path_buf).unwrap_or_default();
+        let live = cx.new(|cx| LiveEditor::new(&text, !can_save, note_dir, cx));
         let editor = cx.new(|cx| {
             let mut state = EditorState::new(window, cx)
                 .language("markdown")
@@ -183,6 +184,14 @@ impl EditorPane {
             live,
             _subscriptions: subscriptions,
         }
+    }
+
+    /// The folder the note is in (relative image links start here).
+    fn note_dir(&self) -> PathBuf {
+        self.path
+            .parent()
+            .map(Path::to_path_buf)
+            .unwrap_or_default()
     }
 
     /// The note's current text (from whichever editor is in charge).
@@ -269,6 +278,9 @@ impl EditorPane {
     /// The note was renamed or moved on disk; keep editing it at its new path.
     pub fn set_path(&mut self, path: PathBuf, cx: &mut Context<Self>) {
         self.path = path;
+        let note_dir = self.note_dir();
+        self.live
+            .update(cx, |live, cx| live.set_note_dir(note_dir, cx));
         if self.dirty {
             self.schedule_save(cx);
         }
@@ -308,156 +320,6 @@ impl EditorPane {
             self.focus(window, cx);
         }
         cx.notify();
-    }
-
-    // ----- Saving -----
-
-    fn on_text_changed(&mut self, cx: &mut Context<Self>) {
-        self.dirty = true;
-        self.schedule_save(cx);
-        self.schedule_refresh(cx);
-        cx.emit(EditorEvent::Edited);
-        cx.notify();
-    }
-
-    /// Saves `SAVE_DELAY` after the last change. Each new change restarts the wait,
-    /// because replacing `save_task` drops (cancels) the previous one.
-    fn schedule_save(&mut self, cx: &mut Context<Self>) {
-        self.save_task = Some(cx.spawn(async move |this, cx| {
-            cx.background_executor().timer(SAVE_DELAY).await;
-            let _ = this.update(cx, |pane, cx| pane.save_now(cx));
-        }));
-    }
-
-    /// Writes unsaved changes right away. Called by the timer, `secondary-s`,
-    /// and the workspace before switching notes or quitting.
-    pub fn save_now(&mut self, cx: &mut Context<Self>) {
-        self.save_task = None;
-        if !self.dirty || !self.can_save {
-            return;
-        }
-        let text = self.text(cx);
-        let contents = self.line_ending.apply(&text);
-        match atomic_write(&self.path, contents.as_bytes()) {
-            Ok(()) => self.dirty = false,
-            Err(error) => cx.emit(EditorEvent::Error(format!("Couldn't save: {error}"))),
-        }
-    }
-
-    fn save_action(&mut self, _: &SaveNow, _: &mut Window, cx: &mut Context<Self>) {
-        self.save_now(cx);
-    }
-
-    // ----- Preview and character count -----
-
-    /// Updates the preview and character count at most every `PREVIEW_DELAY`
-    /// while typing. The count runs on a background thread.
-    fn schedule_refresh(&mut self, cx: &mut Context<Self>) {
-        if self.refresh_task.is_some() {
-            self.refresh_again = true; // the running update will start one more
-            return;
-        }
-        self.refresh_task = Some(cx.spawn(async move |this, cx| {
-            cx.background_executor().timer(PREVIEW_DELAY).await;
-            let Ok(text) = this.update(cx, |pane, cx| {
-                let text = pane.text(cx);
-                pane.set_preview_text(text.clone(), cx);
-                cx.notify();
-                text
-            }) else {
-                return; // the pane was closed
-            };
-            // `SharedString` clones are cheap (shared, not copied).
-            let count = cx
-                .background_spawn(async move { cursor::char_count(&text) })
-                .await;
-            let _ = this.update(cx, |pane, cx| {
-                pane.char_count = count;
-                pane.refresh_task = None;
-                if std::mem::take(&mut pane.refresh_again) {
-                    pane.schedule_refresh(cx);
-                }
-                cx.notify();
-            });
-        }));
-    }
-
-    /// Shows `text` in the preview.
-    fn set_preview_text(&mut self, text: SharedString, cx: &mut Context<Self>) {
-        self.preview
-            .update(cx, |preview, cx| preview.set_text(&text, cx));
-    }
-
-    // ----- Formatting -----
-
-    /// Runs a `kunotes_core::format` transform on the current selection and applies it
-    /// as one undoable edit.
-    pub fn apply_format(
-        &mut self,
-        transform: impl FnOnce(&str, Range<usize>) -> Edit,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        if !self.can_save {
-            return;
-        }
-        let text = self.text(cx);
-        let edit = transform(&text, self.selection(cx));
-        if self.live_active {
-            self.live.update(cx, |live, cx| {
-                live.apply_edit(edit.range, &edit.replacement, edit.new_selection, cx);
-                live.focus(window, cx);
-            });
-            return;
-        }
-        self.editor.update(cx, |editor, cx| {
-            // The editor can only replace the selection, so select the range first.
-            editor.set_selected_range(edit.range, cx);
-            editor.replace(edit.replacement, window, cx);
-            editor.set_selected_range(edit.new_selection, cx);
-            editor.focus(window, cx);
-        });
-    }
-
-    /// A checkbox was clicked in the preview: flip `[ ]` ↔ `[x]` on that line.
-    /// The cursor and focus stay where they are.
-    fn toggle_task(&mut self, offset: usize, window: &mut Window, cx: &mut Context<Self>) {
-        if !self.can_save {
-            return;
-        }
-        let text = self.text(cx);
-        let Some((range, replacement)) = live_buffer::task_toggle(&text, offset) else {
-            return;
-        };
-        if self.live_active {
-            let selection = self.selection(cx);
-            self.live.update(cx, |live, cx| {
-                live.apply_edit(range, replacement, selection, cx);
-            });
-        } else {
-            self.editor.update(cx, |editor, cx| {
-                let selection = editor.selected_range();
-                editor.set_selected_range(range, cx);
-                editor.replace(replacement, window, cx);
-                editor.set_selected_range(selection, cx);
-            });
-        }
-        // Show the change right away instead of after the preview delay.
-        let text = self.text(cx);
-        self.set_preview_text(text, cx);
-        cx.notify();
-    }
-
-    fn format_bold(&mut self, _: &FormatBold, window: &mut Window, cx: &mut Context<Self>) {
-        self.apply_format(kunotes_core::format::bold, window, cx);
-    }
-
-    fn format_italic(&mut self, _: &FormatItalic, window: &mut Window, cx: &mut Context<Self>) {
-        self.apply_format(kunotes_core::format::italic, window, cx);
-    }
-
-    fn format_link(&mut self, _: &FormatLink, window: &mut Window, cx: &mut Context<Self>) {
-        self.apply_format(kunotes_core::format::link, window, cx);
     }
 
     // ----- Drawing -----
@@ -532,11 +394,15 @@ impl Render for EditorPane {
 
         let body: AnyElement = match mode {
             ViewMode::Preview => {
-                preview::render(&self.preview, cx.weak_entity()).into_any_element()
+                preview::render(&self.preview, self.note_dir(), cx.weak_entity()).into_any_element()
             }
             ViewMode::Split => h_resizable("editor-split")
                 .child(resizable_panel().child(self.render_source_editor()))
-                .child(resizable_panel().child(preview::render(&self.preview, cx.weak_entity())))
+                .child(resizable_panel().child(preview::render(
+                    &self.preview,
+                    self.note_dir(),
+                    cx.weak_entity(),
+                )))
                 .into_any_element(),
             ViewMode::Live => self.live.clone().into_any_element(),
             ViewMode::Source => self.render_source_editor(),

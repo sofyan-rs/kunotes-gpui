@@ -1,5 +1,6 @@
 //! The row of formatting buttons above the editor (bold, headings, link, lists, ...).
-//! Each button runs a pure transform from `kunotes_core::format`.
+//! Each button runs a pure transform from `kunotes_core::format`, except Image,
+//! which asks for files first (`EditorPane::insert_images`).
 
 use std::ops::Range;
 
@@ -14,6 +15,17 @@ use super::EditorPane;
 /// A formatting transform: (text, selection) -> edit.
 type Transform = fn(&str, Range<usize>) -> Edit;
 
+/// What a button does.
+#[derive(Clone, Copy)]
+enum Command {
+    /// Runs a transform on the selection.
+    Format(Transform),
+    /// Asks for image files, copies them next to the note, and links them.
+    InsertImage,
+}
+
+use Command::{Format, InsertImage};
+
 fn heading_1(text: &str, selection: Range<usize>) -> Edit {
     format::heading(text, selection, 1)
 }
@@ -22,52 +34,104 @@ fn heading_2(text: &str, selection: Range<usize>) -> Edit {
     format::heading(text, selection, 2)
 }
 
+fn heading_3(text: &str, selection: Range<usize>) -> Edit {
+    format::heading(text, selection, 3)
+}
+
 /// Buttons in groups; a divider is drawn between groups.
-const GROUPS: &[&[(&str, IconName, &str, Transform)]] = &[
+/// Each button: (element id, icon, tooltip, command).
+const GROUPS: &[&[(&str, IconName, &str, Command)]] = &[
     &[
-        ("format-bold", IconName::Bold, "Bold", format::bold),
-        ("format-italic", IconName::Italic, "Italic", format::italic),
+        ("format-bold", IconName::Bold, "Bold", Format(format::bold)),
+        (
+            "format-italic",
+            IconName::Italic,
+            "Italic",
+            Format(format::italic),
+        ),
+        (
+            "format-strike",
+            IconName::Strikethrough,
+            "Strikethrough",
+            Format(format::strikethrough),
+        ),
     ],
     &[
-        ("format-h1", IconName::Heading1, "Heading 1", heading_1),
-        ("format-h2", IconName::Heading2, "Heading 2", heading_2),
+        (
+            "format-h1",
+            IconName::Heading1,
+            "Heading 1",
+            Format(heading_1),
+        ),
+        (
+            "format-h2",
+            IconName::Heading2,
+            "Heading 2",
+            Format(heading_2),
+        ),
+        (
+            "format-h3",
+            IconName::Heading3,
+            "Heading 3",
+            Format(heading_3),
+        ),
     ],
     &[
-        ("format-link", IconName::Link, "Link", format::link),
+        ("format-link", IconName::Link, "Link", Format(format::link)),
+        ("format-image", IconName::ImagePlus, "Image", InsertImage),
         (
             "format-code",
             IconName::Code,
             "Inline Code",
-            format::inline_code,
+            Format(format::inline_code),
         ),
         (
             "format-code-block",
             IconName::SquareCode,
             "Code Block",
-            format::code_block,
+            Format(format::code_block),
         ),
-        ("format-quote", IconName::Quote, "Quote", format::quote),
+        (
+            "format-quote",
+            IconName::Quote,
+            "Quote",
+            Format(format::quote),
+        ),
     ],
     &[
         (
             "format-bullets",
             IconName::List,
             "Bullet List",
-            format::bullet_list,
+            Format(format::bullet_list),
         ),
         (
             "format-numbers",
             IconName::ListOrdered,
             "Numbered List",
-            format::numbered_list,
+            Format(format::numbered_list),
+        ),
+        (
+            "format-tasks",
+            IconName::ListTodo,
+            "Task List",
+            Format(format::task_list),
         ),
     ],
-    &[(
-        "format-rule",
-        IconName::Minus,
-        "Horizontal Rule",
-        format::horizontal_rule,
-    )],
+    &[
+        (
+            "format-table",
+            IconName::Table,
+            "Table",
+            Format(format::table),
+        ),
+        (
+            "format-rule",
+            IconName::Minus,
+            "Horizontal Rule",
+            Format(format::horizontal_rule),
+        ),
+    ],
 ];
 
 pub fn render(pane: Entity<EditorPane>, cx: &App) -> impl IntoElement {
@@ -82,7 +146,7 @@ pub fn render(pane: Entity<EditorPane>, cx: &App) -> impl IntoElement {
         if group_index > 0 {
             bar = bar.child(div().w(px(1.)).h(px(16.)).mx_1().bg(cx.theme().border));
         }
-        for &(id, icon, tooltip, transform) in group.iter() {
+        for &(id, icon, tooltip, command) in group.iter() {
             let pane = pane.clone();
             bar = bar.child(
                 Button::new(id)
@@ -91,7 +155,10 @@ pub fn render(pane: Entity<EditorPane>, cx: &App) -> impl IntoElement {
                     .icon(icon)
                     .tooltip(tooltip)
                     .on_click(move |_, window, cx| {
-                        pane.update(cx, |pane, cx| pane.apply_format(transform, window, cx));
+                        pane.update(cx, |pane, cx| match command {
+                            Format(transform) => pane.apply_format(transform, window, cx),
+                            InsertImage => pane.insert_images(window, cx),
+                        });
                     }),
             );
         }

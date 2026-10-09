@@ -350,14 +350,19 @@ Each button calls a **pure** transform in `kunotes_core::format` and applies the
 ```rust
 pub struct Edit { pub range: Range<usize>, pub replacement: String, pub new_selection: Range<usize> }
 
-pub fn wrap(text: &str, sel: Range<usize>, prefix: &str, suffix: &str) -> Edit;   // **bold**, *italic*, `code`
-pub fn line_prefix(text: &str, sel: Range<usize>, prefix: &str) -> Edit;           // "# ", "## ", "> ", "- ", "1. "
+pub fn wrap(text: &str, sel: Range<usize>, prefix: &str, suffix: &str) -> Edit;   // **bold**, *italic*, ~~strike~~, `code`
+pub fn heading(text: &str, sel: Range<usize>, level: usize) -> Edit;               // "# ", "## ", "### "
+pub fn quote / bullet_list / numbered_list / task_list(text, sel) -> Edit;         // "> ", "- ", "1. ", "- [ ] "
 pub fn link(text: &str, sel: Range<usize>) -> Edit;                                // [sel](url), selects "url"
+pub fn images(text: &str, sel: Range<usize>, images: &[(alt, path)]) -> Edit;      // ![alt](path), one per line
 pub fn code_block(text: &str, sel: Range<usize>) -> Edit;                          // ```\nsel\n```
+pub fn table(text: &str, sel: Range<usize>) -> Edit;                               // 2-column table, "Column 1" selected
 pub fn horizontal_rule(text: &str, sel: Range<usize>) -> Edit;                     // \n\n---\n\n
 ```
 
-Groups: **B** *I* | H1 H2 | link, inline code, code block, quote | bullet, numbered | horizontal rule.
+Groups: **B** *I* ~~S~~ | H1 H2 H3 | link, image, inline code, code block, quote | bullet, numbered, task | table, horizontal rule. The commands live in `ui/editor/formatting.rs` and work on whichever editor is in charge.
+
+**Images.** The Image button asks for files (`prompt_for_paths`), then in the background `fs_ops::import_image` copies each into a **`.img` folder next to the note** (created on demand; dot-named, so the tree and watcher ignore it), turning spaces into dashes and adding `-2`, `-3` on clashes. The copy goes through `atomic_write`. The note gets `![name](.img/name.png)` links, relative to the note, so they keep working when the note's folder moves. Preview resolves them with gpui-base's `TextView::image_source` and `paths::image_file`; Live draws a line that is only an image as the picture (`live_view::image_link`, loaded with `window.use_asset::<ImgResourceLoader>`, painted with `paint_image`), keeping the markdown visible above it on the cursor's line.
 
 Ranges are **UTF-8 byte offsets on char boundaries**, which matches GPUI's text APIs. Tests cover multi-byte text (emoji, CJK).
 
@@ -429,7 +434,7 @@ It shipped in two stages. Stage A (a styled gpui-kit editor with markers faded b
 - **Reveal on cursor:** every line the cursor or selection touches shows its raw markers (dimmed). Other lines hide them: `## Title` draws a large "Title", `**x**` a bold "x", `[label](url)` a link "label", `- item` a "• item", `- [x] done` a checkbox and "done".
 - **Looks like Preview:** heading sizes and weights (28/21/17.5/16px, bold/semibold), foreground heading color, inline code on the accent background, links in the primary color, 14px square checkboxes, muted quotes with a 3px bar, and empty lines as tall as Preview's paragraph gap. Live, Source and Preview text all start 24px from the editor's left edge.
 - **Code blocks:** monospace with a background; the fences stay visible.
-- Images and tables show as styled source.
+- **Images:** a line that is only `![alt](path)` shows the picture (scaled down to the width, one image pixel per point like Preview); inline images and failed loads show the alt text like a link. Tables show as styled source.
 
 **Preview checkboxes.** `preview.rs` installs a markdown block parser that turns lists containing tasks into a custom block, drawn with our own clickable checkboxes (the item text is rendered by a nested `TextView`). A click calls `EditorPane::toggle_task(offset)` through a `WeakEntity` captured by the renderer (actions don't reach the pane in Preview, since nothing there has focus).
 

@@ -5,7 +5,8 @@
 use gpui_kit::base::input::HighlightStyleResolver as _;
 use gpui_kit::component::ActiveTheme as _;
 use gpui_kit::{
-    App, Font, FontStyle, FontWeight, Hsla, SharedString, TextRun, UnderlineStyle, font, px,
+    App, Font, FontStyle, FontWeight, Hsla, SharedString, StrikethroughStyle, TextRun,
+    UnderlineStyle, font, px,
 };
 use kunotes_core::live::SpanKind;
 use kunotes_core::live_view::{LineKind, LineView};
@@ -140,6 +141,13 @@ pub fn text_runs(view: &LineView, colors: &Colors) -> Vec<TextRun> {
                     italic(with_weight(body.clone(), FontWeight::BOLD)),
                     plain.color,
                 ),
+                Some(SpanKind::Strike) => TextRun {
+                    strikethrough: Some(StrikethroughStyle {
+                        thickness: px(1.),
+                        color: Some(plain.color),
+                    }),
+                    ..plain.clone()
+                },
                 Some(SpanKind::Code) => TextRun {
                     background_color: Some(colors.code_background),
                     ..styled(mono.clone(), plain.color)

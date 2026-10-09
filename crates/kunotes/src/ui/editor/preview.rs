@@ -4,12 +4,15 @@
 //! clicked: a click tells the editor pane the task's position in the note,
 //! and the pane flips `[ ]` ↔ `[x]` in the text.
 //!
-//! Right-click shows Copy and Select All.
+//! Right-click shows Copy and Select All. Images like `![](.img/cat.png)`
+//! load from the note's folder.
 
 use gpui_kit::assets::IconName;
-use gpui_kit::base::TextSelection;
+use std::path::PathBuf;
+
 use gpui_kit::base::input::{Copy, SelectAll};
 use gpui_kit::base::markdown_ast::Node;
+use gpui_kit::base::{TextSelection, TextView as BaseTextView};
 use gpui_kit::component::menu::{ContextMenuExt as _, PopupMenu};
 use gpui_kit::component::text::{MarkdownNode, MarkdownParseContext, TextView, TextViewState};
 use gpui_kit::component::{ActiveTheme as _, Icon, Sizable as _, h_flex, v_flex};
@@ -18,20 +21,31 @@ use gpui_kit::{
     MouseButton, ParentElement as _, SharedString, Styled as _, TestSupportExt as _, WeakEntity,
     Window, div, prelude::*, px,
 };
+use kunotes_core::paths;
 
 use super::EditorPane;
 
 /// Name of our custom block for task lists.
 const TASK_LIST: &str = "kunotes-task-list";
 
-pub fn render(state: &Entity<TextViewState>, pane: WeakEntity<EditorPane>) -> impl IntoElement {
+/// `note_dir` is the open note's folder: relative image links are loaded from there.
+pub fn render(
+    state: &Entity<TextViewState>,
+    note_dir: PathBuf,
+    pane: WeakEntity<EditorPane>,
+) -> impl IntoElement {
     let menu_state = state.clone();
     div()
         .id("preview")
         .test_support() // lets UI tests find it
         .size_full()
         .child(
-            TextView::new(state)
+            // gpui-kit's base view: the component one has no `image_source`.
+            BaseTextView::new(state)
+                .image_source(move |link| match paths::image_file(&note_dir, link) {
+                    Some(file) => file.into(),
+                    None => link.clone().into(), // web or data link
+                })
                 .selectable(true)
                 .scrollable(true)
                 .on_link_click(|url, _, _, cx| cx.open_url(url))

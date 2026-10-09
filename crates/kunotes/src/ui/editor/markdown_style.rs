@@ -13,7 +13,8 @@ use gpui_kit::base::input::{
     InputHighlighterFactory, Rope,
 };
 use gpui_kit::{
-    Context, FontStyle, FontWeight, HighlightStyle, SharedString, UnderlineStyle, Window, px,
+    Context, FontStyle, FontWeight, HighlightStyle, SharedString, StrikethroughStyle,
+    UnderlineStyle, Window, px,
 };
 use kunotes_core::live::{Span, SpanKind, spans};
 
@@ -102,6 +103,13 @@ impl MarkdownHighlighter {
             SpanKind::Bold => bold(theme("emphasis.strong")),
             SpanKind::Italic => italic(theme("emphasis")),
             SpanKind::BoldItalic => italic(bold(theme("emphasis.strong"))),
+            SpanKind::Strike => HighlightStyle {
+                strikethrough: Some(StrikethroughStyle {
+                    thickness: px(1.),
+                    ..Default::default()
+                }),
+                ..HighlightStyle::default()
+            },
             SpanKind::Code | SpanKind::CodeBlock => theme("text.literal"),
             SpanKind::LinkText => HighlightStyle {
                 underline: Some(UnderlineStyle {

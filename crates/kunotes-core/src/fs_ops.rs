@@ -153,6 +153,48 @@ pub fn trash(path: &Path) -> Result<()> {
     trash::delete(path).map_err(|error| CoreError::Trash(error.to_string()))
 }
 
+/// The folder, next to each note, that pasted or inserted images are copied into.
+/// It starts with a dot, so the file tree doesn't show it.
+pub const IMAGE_FOLDER: &str = ".img";
+
+/// Image types `import_image` accepts (lowercase file extensions).
+pub const IMAGE_EXTENSIONS: &[&str] = &["png", "jpg", "jpeg", "gif", "webp", "svg", "bmp"];
+
+/// Copies `image` into the `.img` folder next to `note` (creating the folder),
+/// and returns the path to write in the note, relative to the note's folder,
+/// like `.img/photo.png`. Spaces in the name become dashes so the markdown link
+/// stays simple; a name that's taken gets `-2`, `-3`, ... added.
+pub fn import_image(note: &Path, image: &Path) -> Result<String> {
+    let file_name = image
+        .file_name()
+        .map(|name| name.to_string_lossy().into_owned())
+        .unwrap_or_default();
+    let extension = image
+        .extension()
+        .map(|ext| ext.to_string_lossy().to_lowercase())
+        .unwrap_or_default();
+    if !IMAGE_EXTENSIONS.contains(&extension.as_str()) {
+        return Err(CoreError::NotAnImage(file_name));
+    }
+    let stem = image
+        .file_stem()
+        .map(|stem| stem.to_string_lossy().replace(char::is_whitespace, "-"))
+        .unwrap_or_else(|| "image".to_string());
+
+    let folder = note.parent().unwrap_or(Path::new("")).join(IMAGE_FOLDER);
+    fs::create_dir_all(&folder)?;
+    let mut name = format!("{stem}.{extension}");
+    let mut suffix = 2;
+    while exists(&folder.join(&name)) {
+        name = format!("{stem}-{suffix}.{extension}");
+        suffix += 1;
+    }
+    let bytes = fs::read(image)?;
+    atomic_write(&folder.join(&name), &bytes)?;
+    // Markdown paths always use `/`, on every OS.
+    Ok(format!("{IMAGE_FOLDER}/{name}"))
+}
+
 /// Writes `contents` to `path` without ever leaving a half-written file.
 ///
 /// It writes a hidden temporary file next to the target, flushes it to disk,

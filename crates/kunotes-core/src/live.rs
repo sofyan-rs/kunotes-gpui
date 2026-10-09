@@ -17,11 +17,13 @@ pub enum SpanKind {
     Bold,
     Italic,
     BoldItalic,
+    /// Text inside `~~strikethrough~~`.
+    Strike,
     /// Text inside `` `inline code` ``.
     Code,
     /// A line inside a fenced code block.
     CodeBlock,
-    /// The visible text of a link: `[this](...)`.
+    /// The visible text of a link `[this](...)`, or an image's alt text `![this](...)`.
     LinkText,
     /// The target of a link: `[...](this)`.
     LinkUrl,
@@ -159,11 +161,21 @@ fn inline_spans(text: &str, offset: usize, spans: &mut Vec<Span>) {
                 }
                 i += run;
             }
-            b'[' => {
-                if let Some((text_end, url_end)) = link_at(bytes, i) {
-                    push(spans, offset + i..offset + i + 1, SpanKind::Marker);
-                    if text_end > i + 1 {
-                        push(spans, offset + i + 1..offset + text_end, SpanKind::LinkText);
+            // An image `![alt](path)` is styled like a link, with `![` as its marker.
+            b'[' | b'!' => {
+                let open = usize::from(bytes[i] == b'!'); // length of the "!"
+                if bytes[i] == b'!' && bytes.get(i + 1) != Some(&b'[') {
+                    i += 1;
+                    continue;
+                }
+                if let Some((text_end, url_end)) = link_at(bytes, i + open) {
+                    push(spans, offset + i..offset + i + open + 1, SpanKind::Marker);
+                    if text_end > i + open + 1 {
+                        push(
+                            spans,
+                            offset + i + open + 1..offset + text_end,
+                            SpanKind::LinkText,
+                        );
                     }
                     push(
                         spans,
@@ -186,6 +198,16 @@ fn inline_spans(text: &str, offset: usize, spans: &mut Vec<Span>) {
                     continue;
                 }
                 i += 1;
+            }
+            b'~' if run_length(bytes, i, b'~') == 2 => {
+                if let Some(close) = emphasis_close(bytes, i, b'~', 2) {
+                    push(spans, offset + i..offset + i + 2, SpanKind::Marker);
+                    push(spans, offset + i + 2..offset + close, SpanKind::Strike);
+                    push(spans, offset + close..offset + close + 2, SpanKind::Marker);
+                    i = close + 2;
+                    continue;
+                }
+                i += 2;
             }
             delimiter @ (b'*' | b'_') => {
                 let run = run_length(bytes, i, delimiter).min(3);
@@ -381,6 +403,31 @@ mod tests {
     fn underscores_inside_words_are_plain() {
         assert_eq!(pieces("snake_case_name"), []);
         assert_eq!(pieces("2 * 3 * 4"), [], "spaced asterisks aren't emphasis");
+    }
+
+    #[test]
+    fn strikethrough_and_images() {
+        assert_eq!(
+            pieces("a ~~gone~~ b"),
+            [("~~", Marker), ("gone", Strike), ("~~", Marker)]
+        );
+        assert!(
+            !pieces("a ~~~x~~~ b")
+                .iter()
+                .any(|(_, kind)| *kind == Strike),
+            "three tildes aren't strikethrough"
+        );
+        assert_eq!(
+            pieces("![cat](.img/cat.png)"),
+            [
+                ("![", Marker),
+                ("cat", LinkText),
+                ("](", Marker),
+                (".img/cat.png", LinkUrl),
+                (")", Marker)
+            ]
+        );
+        assert!(pieces("wow!").is_empty(), "a lone ! is plain text");
     }
 
     #[test]

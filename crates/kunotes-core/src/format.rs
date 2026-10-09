@@ -38,6 +38,11 @@ pub fn italic(text: &str, selection: Range<usize>) -> Edit {
     wrap(text, selection, "*", "*")
 }
 
+/// `~~selection~~`
+pub fn strikethrough(text: &str, selection: Range<usize>) -> Edit {
+    wrap(text, selection, "~~", "~~")
+}
+
 /// `` `selection` ``
 pub fn inline_code(text: &str, selection: Range<usize>) -> Edit {
     wrap(text, selection, "`", "`")
@@ -73,6 +78,11 @@ pub fn quote(text: &str, selection: Range<usize>) -> Edit {
 /// Prefixes every selected line with `- `.
 pub fn bullet_list(text: &str, selection: Range<usize>) -> Edit {
     transform_lines(text, selection, |_, line| format!("- {line}"))
+}
+
+/// Prefixes every selected line with `- [ ] ` (an unticked task).
+pub fn task_list(text: &str, selection: Range<usize>) -> Edit {
+    transform_lines(text, selection, |_, line| format!("- [ ] {line}"))
 }
 
 /// Prefixes the selected lines with `1. `, `2. `, `3. `, ...
@@ -127,6 +137,42 @@ pub fn code_block(text: &str, selection: Range<usize>) -> Edit {
 /// Replaces the selection with a `---` rule surrounded by blank lines,
 /// and puts the cursor after it.
 pub fn horizontal_rule(text: &str, selection: Range<usize>) -> Edit {
+    let (mut edit, _) = insert_block(text, selection, "---");
+    let cursor = edit.range.start + edit.replacement.len();
+    edit.new_selection = cursor..cursor;
+    edit
+}
+
+/// Inserts a two-column table (on its own lines) with "Column 1" selected.
+pub fn table(text: &str, selection: Range<usize>) -> Edit {
+    let block = "| Column 1 | Column 2 |\n| --- | --- |\n|  |  |";
+    let (mut edit, block_start) = insert_block(text, selection, block);
+    let first = block_start + "| ".len();
+    edit.new_selection = first..first + "Column 1".len();
+    edit
+}
+
+/// Replaces the selection with images: `![name](path)`, one per line.
+/// `images` are (alt text, path in the note) pairs. The cursor goes after them.
+pub fn images(text: &str, selection: Range<usize>, images: &[(String, String)]) -> Edit {
+    let selection = clamp(text, selection);
+    let replacement = images
+        .iter()
+        .map(|(alt, path)| format!("![{alt}]({path})"))
+        .collect::<Vec<_>>()
+        .join("\n");
+    let cursor = selection.start + replacement.len();
+    Edit {
+        replacement,
+        new_selection: cursor..cursor,
+        range: selection,
+    }
+}
+
+/// Replaces the selection with `block`, adding line breaks so the block has a
+/// blank line before and after it. Returns the edit (its `new_selection` is
+/// the cursor right after the block) and where the block starts in the new text.
+fn insert_block(text: &str, selection: Range<usize>, block: &str) -> (Edit, usize) {
     let selection = clamp(text, selection);
     let text_before = &text[..selection.start];
     let text_after = &text[selection.end..];
@@ -146,13 +192,14 @@ pub fn horizontal_rule(text: &str, selection: Range<usize>) -> Edit {
         "\n\n"
     };
 
-    let replacement = format!("{before}---{after}");
-    let cursor = selection.start + replacement.len();
-    Edit {
-        replacement,
+    let block_start = selection.start + before.len();
+    let cursor = block_start + block.len();
+    let edit = Edit {
+        replacement: format!("{before}{block}{after}"),
         new_selection: cursor..cursor,
         range: selection,
-    }
+    };
+    (edit, block_start)
 }
 
 /// Rewrites every line touched by `selection` with `transform(line_index, line)`.
@@ -237,6 +284,38 @@ fn shift(offset: usize, delta: isize) -> usize {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn strikethrough_and_task_list() {
+        assert_eq!(strikethrough("a b", 2..3).apply("a b"), "a ~~b~~");
+        assert_eq!(
+            task_list("one\ntwo", 0..7).apply("one\ntwo"),
+            "- [ ] one\n- [ ] two"
+        );
+    }
+
+    #[test]
+    fn table_goes_on_its_own_lines_with_the_first_header_selected() {
+        let text = "intro";
+        let edit = table(text, 5..5);
+        let result = edit.apply(text);
+        assert!(result.starts_with("intro\n\n| Column 1 | Column 2 |\n| --- | --- |"));
+        assert_eq!(&result[edit.new_selection.clone()], "Column 1");
+    }
+
+    #[test]
+    fn images_are_inserted_one_per_line() {
+        let images_list = [
+            ("cat".to_string(), ".img/cat.png".to_string()),
+            ("日本".to_string(), ".img/日本.jpg".to_string()),
+        ];
+        let edit = images("x ", 2..2, &images_list);
+        assert_eq!(
+            edit.apply("x "),
+            "x ![cat](.img/cat.png)\n![日本](.img/日本.jpg)"
+        );
+        assert_eq!(edit.new_selection.start, edit.apply("x ").len());
+    }
+
     use super::*;
 
     /// Applies `edit` and returns the new text plus the newly selected text.

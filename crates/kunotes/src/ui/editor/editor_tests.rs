@@ -347,3 +347,24 @@ fn preview_menu_select_all_then_copy_includes_tasks(cx: &mut TestAppContext) {
         "task items are copied too: {copied:?}"
     );
 }
+
+#[gpui_kit::test]
+fn new_toolbar_buttons_format_the_selection(cx: &mut TestAppContext) {
+    let s = setup(cx);
+    open_note(&s, cx, "Welcome.md");
+    select(&s, cx, 2..9); // "Welcome"
+    in_window(&s, cx, |window, cx| window.click("format-strike", cx));
+    assert_eq!(editor_text(&s, cx), "# ~~Welcome~~\n");
+
+    select(&s, cx, 0..0);
+    in_window(&s, cx, |window, cx| window.click("format-h3", cx));
+    assert_eq!(editor_text(&s, cx), "### ~~Welcome~~\n");
+
+    let end = editor_text(&s, cx).len();
+    select(&s, cx, end..end);
+    in_window(&s, cx, |window, cx| window.click("format-tasks", cx));
+    assert_eq!(editor_text(&s, cx), "### ~~Welcome~~\n- [ ] ");
+
+    in_window(&s, cx, |window, cx| window.click("format-table", cx));
+    assert!(editor_text(&s, cx).contains("| Column 1 | Column 2 |\n| --- | --- |"));
+}

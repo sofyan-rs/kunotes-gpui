@@ -13,9 +13,9 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use gpui_kit::{
-    App, AvailableSpace, BorderStyle, Bounds, Element, ElementId, ElementInputHandler, Entity,
-    GlobalElementId, InspectorElementId, IntoElement, LayoutId, PathBuilder, Pixels, Size, Style,
-    TextAlign, Window, fill, outline, point, px, relative, size,
+    App, AvailableSpace, BorderStyle, Bounds, Corners, Element, ElementId, ElementInputHandler,
+    Entity, GlobalElementId, InspectorElementId, IntoElement, LayoutId, PathBuilder, Pixels, Size,
+    Style, TextAlign, Window, fill, outline, point, px, relative, size,
 };
 use kunotes_core::live_view::LineKind;
 
@@ -72,11 +72,9 @@ impl Element for LiveElement {
         cx: &mut App,
     ) -> (LayoutId, Self::RequestLayoutState) {
         let editor = self.editor.read(cx);
-        let inputs = Rc::new(layout::line_inputs(
-            editor.buffer.text(),
-            editor.buffer.selection(),
-            cx,
-        ));
+        let (text, selection) = (editor.buffer.text().to_string(), editor.buffer.selection());
+        let note_dir = editor.note_dir.clone();
+        let inputs = Rc::new(layout::line_inputs(&text, selection, &note_dir, window, cx));
         let cell: LayoutCell = Rc::default();
 
         let mut style = Style::default();
@@ -187,6 +185,23 @@ impl Element for LiveElement {
                 cx,
             ) {
                 log::warn!("Couldn't draw a line: {error}");
+            }
+        }
+
+        // Pictures of image lines.
+        for line in &doc.lines {
+            let Some((picture, bounds)) = &line.image else {
+                continue;
+            };
+            let bounds = *bounds + origin;
+            if bounds.bottom() < visible.top() || bounds.top() > visible.bottom() {
+                continue;
+            }
+            let corners = Corners::all(px(4.));
+            if let Err(error) =
+                window.paint_image(bounds, bounds, corners, picture.clone(), 0, false)
+            {
+                log::warn!("Couldn't draw an image: {error}");
             }
         }
 

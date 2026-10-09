@@ -3,14 +3,21 @@
 //! cursor is on it. Also answers "which text offset is at this point?" (clicks)
 //! and "where is this offset drawn?" (the caret).
 //!
+//! A line that is only an image (`![alt](.img/cat.png)`) shows the picture;
+//! on the cursor's line the markdown stays visible above it.
+//!
 //! Positions here are relative to the top-left corner of the text area.
 
 use std::ops::Range;
+use std::path::Path;
+use std::sync::Arc;
 
 use gpui_kit::{
-    App, Bounds, Pixels, Point, SharedString, TextRun, Window, WrappedLine, point, px, size,
+    App, Bounds, ImgResourceLoader, Pixels, Point, RenderImage, Resource, SharedString, Size,
+    TextRun, Window, WrappedLine, point, px, size,
 };
-use kunotes_core::live_view::{LineKind, LineView, line_view, lines};
+use kunotes_core::live_view::{LineKind, LineView, empty_view, image_link, line_view, lines};
+use kunotes_core::paths;
 
 use super::style;
 
@@ -30,7 +37,12 @@ pub struct LineInput {
     space_above: Pixels,
     /// Space left of the text, for a checkbox or a quote bar.
     text_left: Pixels,
+    /// For an image line whose picture has loaded: the picture and its size.
+    image: Option<(Arc<RenderImage>, Size<Pixels>)>,
 }
+
+/// Space between a picture and the next line.
+const IMAGE_GAP: f32 = 8.;
 
 /// One shaped line, ready to draw.
 pub struct LaidLine {
@@ -49,12 +61,17 @@ pub struct LaidLine {
     pub line_height: Pixels,
     /// Height of all rows of text (a long line wraps onto several rows).
     pub text_height: Pixels,
+    /// The picture of an image line and where it goes (below the text).
+    pub image: Option<(Arc<RenderImage>, Bounds<Pixels>)>,
 }
 
 impl LaidLine {
     /// Bottom of the line's block.
     pub fn bottom(&self) -> Pixels {
-        self.text_top + self.text_height
+        match &self.image {
+            Some((_, bounds)) => bounds.bottom() + px(IMAGE_GAP),
+            None => self.text_top + self.text_height,
+        }
     }
 
     /// The checkbox of a task line (not drawn while the line is revealed).
@@ -85,14 +102,28 @@ pub struct DocLayout {
 }
 
 /// Prepares every line of `text`. Lines touching `selection` are revealed.
-pub fn line_inputs(text: &str, selection: Range<usize>, cx: &App) -> Vec<LineInput> {
+/// Image links are relative to `note_dir`.
+pub fn line_inputs(
+    text: &str,
+    selection: Range<usize>,
+    note_dir: &Path,
+    window: &mut Window,
+    cx: &mut App,
+) -> Vec<LineInput> {
     let colors = style::Colors::from_theme(cx);
     lines(text)
         .into_iter()
         .enumerate()
         .map(|(index, line)| {
             let revealed = line.range.start <= selection.end && selection.start <= line.range.end;
-            let view = line_view(&text[line.range.clone()], &line.spans, revealed);
+            let line_text = &text[line.range.clone()];
+            let image = image_link(line_text, &line.spans)
+                .and_then(|link| load_image(note_dir, &line_text[link], window, cx));
+            let view = match &image {
+                // The picture replaces the text, unless the cursor is on the line.
+                Some(_) if !revealed => empty_view(LineKind::Image, line_text.len()),
+                _ => line_view(line_text, &line.spans, revealed),
+            };
             let base = px(FONT_SIZE);
             let (font_size, line_height, space_above) = match view.kind {
                 LineKind::Heading(level) => {
@@ -122,9 +153,30 @@ pub fn line_inputs(text: &str, selection: Range<usize>, cx: &App) -> Vec<LineInp
                 line_height,
                 space_above,
                 text_left,
+                image,
             }
         })
         .collect()
+}
+
+/// The picture at `link` (relative to `note_dir`, or a web address) and its
+/// size. `None` while it loads (GPUI redraws the editor once it has) or if it
+/// can't be loaded; the line then shows its text like a link.
+fn load_image(
+    note_dir: &Path,
+    link: &str,
+    window: &mut Window,
+    cx: &mut App,
+) -> Option<(Arc<RenderImage>, Size<Pixels>)> {
+    let resource = match paths::image_file(note_dir, link) {
+        Some(file) => Resource::Path(file.into()),
+        None => Resource::Uri(link.to_string().into()),
+    };
+    let image = window.use_asset::<ImgResourceLoader>(&resource, cx)?.ok()?;
+    // One image pixel per point, like the Preview.
+    let pixels = image.size(0);
+    let natural = size(px(pixels.width.0 as f32), px(pixels.height.0 as f32));
+    Some((image, natural))
 }
 
 /// Shapes every line to fit `width`.
@@ -146,10 +198,26 @@ pub fn build(inputs: &[LineInput], width: Pixels, window: &mut Window) -> DocLay
             .and_then(|mut shaped| shaped.pop())
             .unwrap_or_default();
         let rows = shaped.wrap_boundaries().len() + 1;
-        let text_height = input.line_height * rows as f32;
+        let shows_text = !(input.image.is_some() && input.view.text.is_empty());
+        let text_height = if shows_text {
+            input.line_height * rows as f32
+        } else {
+            px(0.)
+        };
         let top = y;
         let text_top = top + input.space_above;
-        y = text_top + text_height;
+        // A picture goes below the text, shrunk to fit the width if needed.
+        let image = input.image.as_ref().map(|(picture, natural)| {
+            let max_width = (width - input.text_left).max(px(1.));
+            let scale = (max_width / natural.width).min(1.);
+            let shown = size(natural.width * scale, natural.height * scale);
+            let origin = point(input.text_left, text_top + text_height);
+            (picture.clone(), Bounds::new(origin, shown))
+        });
+        y = match &image {
+            Some((_, bounds)) => bounds.bottom() + px(IMAGE_GAP),
+            None => text_top + text_height,
+        };
         lines.push(LaidLine {
             source: input.source.clone(),
             kind: input.view.kind,
@@ -161,6 +229,7 @@ pub fn build(inputs: &[LineInput], width: Pixels, window: &mut Window) -> DocLay
             text_left: input.text_left,
             line_height: input.line_height,
             text_height,
+            image,
         });
     }
     DocLayout {

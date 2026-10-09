@@ -25,6 +25,8 @@ pub enum LineKind {
     /// The ```` ``` ```` line that opens or closes a code block.
     Fence,
     Rule,
+    /// A line that is only an image: `![alt](path)`.
+    Image,
     Bullet,
     Numbered,
     /// A task list item; `checked` is `[x]`.
@@ -219,8 +221,44 @@ fn is_hidden(span: &Span, kind: LineKind) -> bool {
     }
 }
 
+/// For an image line (`![alt](path)` alone), the range of `path` in the line.
+pub fn image_link(line_text: &str, line_spans: &[Span]) -> Option<Range<usize>> {
+    let trimmed_start = line_text.len() - line_text.trim_start().len();
+    let trimmed_end = line_text.trim_end().len();
+    let first = line_spans.first()?;
+    let last = line_spans.last()?;
+    let is_image = first.kind == SpanKind::Marker
+        && first.range.start == trimmed_start
+        && &line_text[first.range.clone()] == "!["
+        && last.kind == SpanKind::Marker
+        && last.range.end == trimmed_end
+        && line_spans.len() <= 5;
+    if !is_image {
+        return None;
+    }
+    line_spans
+        .iter()
+        .find(|span| span.kind == SpanKind::LinkUrl)
+        .map(|span| span.range.clone())
+}
+
+/// A line that draws no text (an image shown as a picture instead).
+/// Every position maps to the end of the line.
+pub fn empty_view(kind: LineKind, source_len: usize) -> LineView {
+    LineView {
+        kind,
+        text: String::new(),
+        runs: Vec::new(),
+        segments: Vec::new(),
+        source_len,
+    }
+}
+
 /// The kind of line, from its parts.
 fn line_kind(line_text: &str, line_spans: &[Span]) -> LineKind {
+    if image_link(line_text, line_spans).is_some() {
+        return LineKind::Image;
+    }
     let first = line_spans.first();
     for span in line_spans {
         match span.kind {
@@ -316,6 +354,25 @@ mod tests {
             LineKind::Task { checked: false }
         );
         assert_eq!(view("1. step", false).text, "1. step");
+    }
+
+    #[test]
+    fn image_lines_are_recognised() {
+        let line = "![cat](.img/cat.png)";
+        let all = lines(line);
+        assert_eq!(view(line, false).kind, LineKind::Image);
+        assert_eq!(
+            image_link(line, &all[0].spans).map(|range| &line[range]),
+            Some(".img/cat.png")
+        );
+        let inline = "see ![cat](c.png) here";
+        assert_eq!(
+            image_link(inline, &lines(inline)[0].spans),
+            None,
+            "not alone on its line"
+        );
+        let empty = empty_view(LineKind::Image, line.len());
+        assert_eq!((empty.to_display(3), empty.to_source(0)), (0, line.len()));
     }
 
     #[test]
