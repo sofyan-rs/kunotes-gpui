@@ -1,0 +1,15 @@
+[package]
+name = "kunotes"
+description = "A minimal, cross-platform markdown vault app"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+kunotes-core.workspace = true
+gpui-kit.workspace = true
+anyhow.workspace = true
+log.workspace = true
+env_logger.workspace = true

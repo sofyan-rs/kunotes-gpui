@@ -10,25 +10,25 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done
 
 **Goal:** a hello-world gpui-kit window that builds on all three OSes in CI, plus confirmed answers to every open question in §11.
 
-- [ ] `cargo new` workspace with `crates/kunotes-core` (lib) and `crates/kunotes` (bin). Edition 2024, `rust-version = "1.92"`.
-- [ ] Workspace `Cargo.toml`: shared `[workspace.dependencies]`, and `[profile.dev.package]` opt-level 3 for `gpui-pre`, `gpui-component`, `gpui-kit`, `gpui-kit-assets`, `gpui-pre-macros`, `gpui-pre-platform`, `rustybuzz`, `taffy`, `ttf-parser` (from the gpui-kit install guide).
-- [ ] `fixtures/sample-vault/`: nested folders, hidden files, non-md files, and an `Example.md` that uses every markdown element in §6.5 (headings, emphasis, inline code, code block, nested lists, task list, quote, link, rule). Used for manual testing and screenshots.
-- [ ] `rust-toolchain.toml` pinned to stable ≥ 1.92, with components `rustfmt` and `clippy`.
-- [ ] Hello window: `application().with_assets(assets::Assets).run(|cx| { init(cx); open_window(..) })`.
-- [ ] CI (GitHub Actions) matrix on `macos-latest`, `windows-latest`, and Linux as a `fedora:latest` container job on `ubuntu-latest`, running `fmt --check`, `clippy -D warnings`, `test --workspace`, and `build --release`. Install the dnf deps in the Fedora container (see CONTRIBUTION.md).
-- [ ] Spike throwaway examples in `crates/kunotes/examples/spike_*.rs` to answer §11:
-  - [ ] Editor: soft wrap, cursor offset, selection get/set, undoable range replace, markdown highlighting.
-  - [ ] TextView: task lists, styling hooks.
-  - [ ] Live stage A: per-capture highlight styles (weight, italic, background, size), proportional font (§11.10).
-  - [ ] Live stage B: minimal `EntityInputHandler` element that accepts typing + IME on all three OSes (§11.11).
-  - [ ] `secondary-` keybinding.
-  - [ ] Double-click via `ClickEvent` on `ListItem`.
-  - [ ] `on_drag`/`on_drop` inside `uniform_list`.
-  - [ ] ToggleGroup re-click behavior.
-  - [ ] App menu on Windows/Linux.
-  - [ ] System theme sync.
-  - [ ] `prompt_for_paths(directories)` on all three OSes.
-- [ ] Record findings in [`spike-notes.md`](./spike-notes.md) and update ARCHITECTURE §6 and §11 wherever a decision changes.
+- [x] `cargo new` workspace with `crates/kunotes-core` (lib) and `crates/kunotes` (bin). Edition 2024, `rust-version = "1.92"`.
+- [x] Workspace `Cargo.toml`: shared `[workspace.dependencies]`, and `[profile.dev.package]` opt-level 3 for `gpui-pre`, `gpui-component`, `gpui-kit`, `gpui-kit-assets`, `gpui-pre-macros`, `gpui-pre-platform`, `rustybuzz`, `taffy`, `ttf-parser` (from the gpui-kit install guide).
+- [x] `fixtures/sample-vault/`: nested folders, hidden files, non-md files, and an `Example.md` that uses every markdown element in §6.5 (headings, emphasis, inline code, code block, nested lists, task list, quote, link, rule). Used for manual testing and screenshots.
+- [x] `rust-toolchain.toml` pinned to 1.99.0 (≥ 1.92), with components `rustfmt` and `clippy`.
+- [x] Hello window: `application().with_assets(assets::Assets).run(|cx| { init(cx); open_window(..) })`.
+- [~] CI (GitHub Actions) matrix on `macos-latest`, `windows-latest`, and Linux as a `fedora:latest` container job on `ubuntu-latest`, running `fmt --check`, `clippy -D warnings`, `test --workspace`, and `build --release`. Install the dnf deps in the Fedora container (see CONTRIBUTION.md).
+- [x] Answer §11 from crate source (runtime spikes only where needed):
+  - [x] Editor: soft wrap, cursor offset, selection get/set, undoable range replace, markdown highlighting.
+  - [x] TextView: task lists, styling hooks.
+  - [x] Live stage A: per-capture highlight styles (weight, italic, background, size), proportional font (§11.10).
+  - [~] Live stage B: API confirmed (`EntityInputHandler`, UTF-16 ranges). IME runtime check on Windows/Fedora moves to the start of Phase 10.
+  - [x] `secondary-` keybinding.
+  - [x] Double-click via `ClickEvent` on `ListItem`.
+  - [~] `on_drag`/`on_drop` inside `uniform_list`: API confirmed; runtime check during Phase 3.
+  - [x] ToggleGroup re-click behavior.
+  - [x] App menu on Windows/Linux.
+  - [x] System theme sync.
+  - [~] `prompt_for_paths(directories)`: API confirmed; runtime check per OS during Phase 2.
+- [x] Record findings in [`spike-notes.md`](./spike-notes.md) and update ARCHITECTURE §6 and §11 wherever a decision changes.
 
 **Done when:** CI is green on all three OSes, the window shows a gpui-kit `Button` on each, and every §11 item has a written answer.
 

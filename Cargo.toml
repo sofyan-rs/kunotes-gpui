@@ -1,0 +1,29 @@
+[workspace]
+resolver = "3"
+members = ["crates/kunotes-core", "crates/kunotes"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.92"
+license = "Apache-2.0"
+repository = "https://github.com/sofyan-rs/kunotes-gpui"
+
+[workspace.dependencies]
+kunotes-core = { path = "crates/kunotes-core" }
+gpui-kit = { version = "0.7.1", features = ["tree-sitter-markdown", "tree-sitter-markdown-inline"] }
+anyhow = "1"
+log = "0.4"
+env_logger = "0.11"
+
+# Framework crates are optimized even in debug builds so the app stays responsive.
+[profile.dev.package]
+gpui-pre = { opt-level = 3 }
+gpui-component = { opt-level = 3 }
+gpui-kit = { opt-level = 3 }
+gpui-kit-assets = { opt-level = 3 }
+gpui-pre-macros = { opt-level = 3 }
+gpui-pre-platform = { opt-level = 3 }
+rustybuzz = { opt-level = 3 }
+taffy = { opt-level = 3 }
+ttf-parser = { opt-level = 3 }

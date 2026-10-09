@@ -29,8 +29,8 @@ Scope: **open a folder, browse it, edit markdown.** There are no wikilinks, back
 |---|---|---|
 | UI framework | `gpui-kit = "0.7.1"` | Re-exports GPUI. Do not add `gpui` separately. |
 | Toolchain | Rust ≥ 1.92, edition 2024 | 1.92 is required by gpui-kit's locked dependency graph. Windows needs the MSVC toolchain. |
-| Markdown preview | `gpui_kit::component::text::TextView::markdown` | Fallback if task lists don't render: `pulldown-cmark` plus a custom renderer (§6.5). |
-| Editor (Source mode, Live stage A) | gpui-kit `EditorState` / `TextareaState` (multi-line, soft wrap, tree-sitter markdown highlight) | Exact type is picked in the Phase 0 spike (§11). |
+| Markdown preview | `gpui_kit::component::text::TextView::markdown` | Renders task lists; style hooks via `TextViewStyle` (§6.5). |
+| Editor (Source mode, Live stage A) | gpui-kit `EditorState` (`.language("markdown")`, soft wrap, no line numbers) | Live stage A uses the unstyled `gpui_base::input::Editor` with its own highlight styles (§6.9). |
 | Editor (Live stage B) | Custom `LiveEditor` element on GPUI primitives (`EntityInputHandler`, `StyledText`/text layout) + `ropey` buffer + `pulldown-cmark` offsets | See §6.9. |
 | File watching | `notify` + `notify-debouncer-full` | FSEvents on macOS, ReadDirectoryChangesW on Windows, inotify on Linux. |
 | Trash | `trash` crate | macOS Trash, Windows Recycle Bin, freedesktop trash on Linux. |
@@ -304,7 +304,7 @@ With no selection, transforms apply at the cursor position. They fall back to th
 - `TextView::markdown("preview", content).scrollable(true)` with selectable text (on by default) and ~25px padding.
 - It must render: headings H1–H6, paragraphs, bold, italic, inline code (accent color), links (accent color with underline, opened in the browser via `cx.open_url`), fenced code blocks (muted rounded background, monospace), ordered and unordered lists with nesting, task lists with checked and unchecked boxes, blockquotes (accent left bar, muted text), and thematic breaks.
 - **Throttle:** in Split mode, update the preview at most every ~150ms while typing, so large notes don't re-parse on every keystroke.
-- **Fallback:** if `TextView` can't render task-list checkboxes or the styles above, replace it with `pulldown-cmark` events → our own GPUI element tree. This is isolated in `preview.rs`.
+- **Styling:** `TextViewStyle` sets heading sizes, code-block background, and inline-code style. Blockquote styling is fixed by the component (muted text, left border in the border color) and is accepted as is.
 
 ### 6.6 Quick switcher (`ui/quick_switcher.rs`)
 
@@ -333,9 +333,10 @@ It ships in two stages.
 
 #### Stage A: styled source (PLAN Phase 9)
 
-- Reuses the gpui-kit editor from Source mode, with a proportional UI font instead of monospace.
+- Uses the **unstyled** `gpui_base::input::Editor` over an `EditorState`, with a proportional UI font. The styled `Editor` component can't be used here because it forces the global highlight theme, which would also restyle Source mode.
 - A custom highlight theme for the markdown tree-sitter captures: headings bold and accent-colored, `**bold**` bold, `*italic*` italic, inline code monospace with a muted background, links accent-colored, and markers (`#`, `**`, `*`, `` ` ``, `>`, `-`, `[ ]`) dimmed.
-- Limits: markers stay visible and every line keeps the same font size, so headings aren't bigger. Phase 0 checks whether per-capture font size/weight is supported (§11).
+- Highlight styles come from a custom `HighlightStyleResolver` passed through `set_editor_style`, which allows color, weight, italic, and background per capture.
+- Limits: markers stay visible and every line keeps the same font size (GPUI highlight styles have no font size), so headings are bold and colored but not bigger.
 - Low effort. Gives a usable formatted writing view early.
 
 #### Stage B: custom live editor (PLAN Phase 10)
@@ -355,7 +356,7 @@ layout: per block → shaped lines (StyledText / text_system().shape_line) with 
    ▼
 paint: text, cursor, selection, widgets (checkbox, hr, code-block background, quote bar)
    ▲
-   │  EntityInputHandler (typing, IME composition, marked text) + key actions
+   │  EntityInputHandler (typing, IME composition, marked text; UTF-16 ranges ⇄ rope byte offsets) + key actions
 ```
 
 Rendering rules:
@@ -489,18 +490,20 @@ A Wayland or X11 session with a working Vulkan driver (`vulkan-loader` plus Mesa
 
 ---
 
-## 11. Open questions (resolved in the Phase 0 spike)
+## 11. Open questions (Phase 0 spike results)
 
-The gpui-kit docs don't fully specify these, so each must be checked against `docs.rs/gpui-kit` and source before the related phase starts:
+Answered from crate source. Details, signatures, and file references are in [implementation/spike-notes.md](./implementation/spike-notes.md).
 
-1. **Editor API:** which of `EditorState` / `TextareaState` / `InputState` gives soft wrap, a cursor offset or position, a selected range (get and set), and an undoable `replace(range, text)` for the formatter bar? Does `.language("markdown")` with `tree-sitter-markdown` work?
-2. **TextView:** does it render task-list checkboxes, and can heading sizes, code block background, and blockquote bar be styled? If not, use the fallback (§6.5).
-3. **`secondary-` modifier:** confirm it's supported in `KeyBinding::new` in the GPUI version that gpui-kit 0.7.1 pins.
-4. **Click count / double-click** on `ListItem::on_click` (`ClickEvent`).
-5. **Drag and drop** inside `uniform_list` rows (`on_drag` / `on_drop` / `drag_over`).
-6. **`ToggleGroup`** behavior when the already-checked segment is clicked.
-7. **App menu** on Windows and Linux: does gpui-kit provide an app menu bar component, or do we build a dropdown in the title bar?
-8. **System theme sync:** the API for following OS light/dark changes at runtime.
-9. **`prompt_for_paths` on Linux** without a portal: what's the failure mode, and do we need a fallback message?
-10. **Live stage A:** can the editor's highlight theme set font weight, italic, background, and font size per tree-sitter capture? Can it use a proportional font?
-11. **Live stage B:** confirm `EntityInputHandler` (IME marked text, `bounds_for_range`, `character_index_for_point`) works on macOS, Windows, and Fedora (Wayland, with ibus/fcitx) in the pinned GPUI version.
+| # | Question | Result |
+|---|---|---|
+| 1 | Editor API | `EditorState` + `.language("markdown")`, `.line_number(false)`, soft wrap on by default. Byte offsets. No public range replace: select the range, then `replace` (undoable). |
+| 2 | TextView | Renders task lists (display-only), heading-size and code-block style hooks, link handler. Blockquote style is fixed (muted + left border), which we accept. No pulldown-cmark fallback needed. |
+| 3 | `secondary-` | Supported. |
+| 4 | Double-click | `ClickEvent::click_count()`. |
+| 5 | Drag and drop | `on_drag` / `on_drop` / `drag_over` exist; `ListItem` supports them. Runtime check inside `uniform_list` pending. |
+| 6 | ToggleGroup | Multi-select; re-clicking unchecks. View mode derives the changed index and ignores un-checking the active mode. |
+| 7 | App menu Win/Linux | `AppMenuBar` component, fed via `GlobalState::set_app_menus`. |
+| 8 | Theme sync | `Theme::sync_system_appearance` + `cx.observe_window_appearance`. |
+| 9 | Folder picker | `prompt_for_paths` returns a oneshot receiver; `Err` shows a notification. Fedora runtime check pending. |
+| 10 | Live stage A styling | Color, weight, italic per capture; no per-capture font size. Must use the unstyled `gpui_base::input::Editor` + `set_editor_style`, because the styled component forces the global highlight theme. |
+| 11 | Live stage B input | `EntityInputHandler` with **UTF-16** ranges; reference `gpui-pre/examples/input.rs`. IME runtime check on Windows/Fedora pending. |
