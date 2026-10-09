@@ -12,7 +12,7 @@ Scope is intentionally minimal: open a folder, browse it, edit markdown. There a
 
 ## Docs (read before non-trivial changes)
 
-- `docs/ARCHITECTURE.md`: stack, workspace layout, `VaultStore` state model, per-component specs (§6), save/watcher pipeline (§7), cross-platform rules (§8), feature summary (§10), open questions (§11).
+- `docs/ARCHITECTURE.md`: stack, project structure and "where does my code go" (§3), `VaultStore` state model, per-component specs (§6), save/watcher pipeline (§7), cross-platform rules (§8), feature summary (§10), open questions (§11).
 - `docs/implementation/PLAN.md`: phased roadmap, per-OS feature checklist, risks.
 - `docs/implementation/spike-notes.md`: Phase 0 answers about the gpui-kit API (written during Phase 0).
 - `docs/CONTRIBUTION.md`: setup per OS, conventions, PR checklist.
@@ -43,11 +43,20 @@ Rust ≥ 1.92 (required by gpui-kit). Windows needs the MSVC toolchain. Fedora n
 
 - `crates/kunotes-core/`: **pure logic, no gpui.** Covers scan (`node.rs`), file ops and `atomic_write` (`fs_ops.rs`), filename validation (`names.rs`), relative path and breadcrumb (`paths.rs`), formatter transforms (`format.rs`), line/col and char count (`cursor.rs`), file flatten/filter and tree `visible_rows` (`search.rs`), `Settings` (`settings.rs`), and Live-mode logic (`live.rs`: blocks, marker ranges, cursor movement over hidden ranges). Anything that can be written without gpui goes here, with tests.
 - `crates/kunotes/`: the GPUI app.
-  - `vault.rs`: the `VaultStore` entity, the single source of truth, which emits `VaultEvent`.
+  - `vault_store.rs`: the `VaultStore` entity, the single source of truth, which emits `VaultEvent`.
   - `watcher.rs`: `notify` events go through a channel to `refresh`.
-  - `save.rs`: `SaveDebouncer`, 500ms.
+  - `autosave.rs`: `SaveDebouncer`, 500ms.
   - `platform.rs`: the **only** place for `#[cfg(target_os)]` and OS wording.
-  - `ui/*`: views. `ui/live_editor/` is the custom Live-mode editor (stage B).
+  - `ui/`: views grouped by feature: `workspace.rs`, `title_bar.rs`, `sidebar/` (`mod.rs`, `file_tree.rs`), `editor/` (`mod.rs` = EditorPane, `formatter_bar.rs`, `preview.rs`, `status_bar.rs`, `live/` = Live stage B), `quick_switcher.rs`, `dialogs.rs`, `empty_state.rs`.
+
+Structure rules (ARCHITECTURE §3): the codebase must stay readable for engineers new to Rust.
+- Start with one file; make a folder (with `mod.rs`) only when a module needs several files.
+- Group UI by feature, not by type. One main type per file, named after the file.
+- At most two folder levels under `src/`. Files under ~400 lines.
+- Every file starts with a `//!` purpose comment.
+- Private by default.
+- Unit tests go in the same file; filesystem tests go in `crates/kunotes-core/tests/`.
+- Prefer plain, explicit code over clever generics or macros. Add short comments where Rust or GPUI idioms aren't obvious (lifetimes, `cx.listener`, entity updates).
 
 ## Editor modes
 

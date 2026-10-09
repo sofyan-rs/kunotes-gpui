@@ -54,16 +54,27 @@ A test vault: open `fixtures/sample-vault/`. Its `Example.md` uses every markdow
 
 ---
 
-## 3. Project layout
+## 3. Project structure
 
 ```
-crates/kunotes-core/   pure logic, no gpui dependency (scan, fs ops, names, format, cursor, search, settings)
-crates/kunotes/        GPUI app (vault entity, watcher, save, ui/*)
-packaging/             per-OS bundling assets
+crates/kunotes-core/   library: pure logic, no GPUI (start at src/lib.rs)
+crates/kunotes/        app: main.rs → app.rs → ui/workspace.rs
+  src/ui/sidebar/      file tree and sidebar header
+  src/ui/editor/       editor pane, preview, formatter bar, status bar
+fixtures/              sample vault for manual testing
 docs/                  architecture, plan, spike notes
 ```
 
+The full tree, the rules for adding files, and the "where does my code go?" table are in [ARCHITECTURE §3](./ARCHITECTURE.md#3-project-structure).
+
 **Rule of thumb:** if code can be written without `gpui`, it goes in `kunotes-core` with tests. UI files should mostly be layout and event wiring.
+
+### Reading order for newcomers
+
+1. `crates/kunotes-core/src/lib.rs`, then any module with its tests at the bottom. The tests show how each function is meant to be used.
+2. `crates/kunotes/src/main.rs` → `app.rs` → `ui/workspace.rs`. This follows how the window is built.
+3. `vault_store.rs`, which is the shared state every view reads from.
+4. One feature folder, e.g. `ui/sidebar/`.
 
 ---
 
@@ -73,7 +84,9 @@ docs/                  architecture, plan, spike notes
 - Edition 2024. `rustfmt` defaults. Clippy must be clean with `-D warnings`.
 - Don't call `unwrap()` or `expect()` in app code paths. Exceptions are startup invariants and tests. Use `?` and surface errors (§6).
 - Use `std::path::{Path, PathBuf}` for paths. **Never** build paths with string concatenation or a hard-coded `/`.
-- Keep comments sparse. Doc comments (`///`) go on public items in `kunotes-core`. In UI code, comment *why*, not *what*.
+- Every file starts with a `//!` comment saying what it's for. Doc comments (`///`) go on public items. Otherwise comment *why*, not *what*.
+- Write for readers who are new to Rust. Prefer plain structs, enums, and functions over clever generics, trait tricks, or custom macros. When a Rust or GPUI idiom isn't obvious (a lifetime, `cx.listener`, `entity.update`), add a one-line comment.
+- Follow the structure rules in ARCHITECTURE §3: one main type per file, at most two folder levels, files under ~400 lines, private by default.
 
 ### GPUI patterns
 - Shared state is an `Entity<T>` (`VaultStore`). Views hold `Entity` handles and `cx.subscribe` to events. They don't hold copies of the state.

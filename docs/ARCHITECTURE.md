@@ -47,54 +47,96 @@ Exact versions are pinned in `Cargo.lock` once Phase 0 is done.
 
 ---
 
-## 3. Workspace layout
+## 3. Project structure
+
+The layout follows common Rust practice but stays small and flat, so someone new to Rust can find things quickly.
 
 ```
 kunotes-gpui/
-├── Cargo.toml                  # [workspace], shared deps, profile.dev.package opt-levels
+├── Cargo.toml                 # workspace: member crates, shared dependency versions
+├── Cargo.lock                 # exact dependency versions (committed; this is an app)
+├── rust-toolchain.toml        # pinned Rust version
 ├── crates/
-│   ├── kunotes-core/           # PURE logic. No gpui dependency. Fast unit tests.
-│   │   └── src/
-│   │       ├── lib.rs
-│   │       ├── node.rs         # VaultNode + scan()
-│   │       ├── fs_ops.rs       # create/rename/move/trash/unique_path, atomic_write
-│   │       ├── names.rs        # cross-platform filename validation
-│   │       ├── paths.rs        # relative_path, breadcrumb components
-│   │       ├── format.rs       # markdown formatter transforms (text + range -> text + range)
-│   │       ├── cursor.rs       # byte offset -> (line, col), char count
-│   │       ├── search.rs       # flatten files, quick-switcher filter, tree visible rows
-│   │       ├── live.rs         # Live mode: blocks, marker ranges, cursor over hidden ranges, list continuation
-│   │       └── settings.rs     # Settings struct + load/save (serde)
-│   └── kunotes/                # GPUI app (binary)
-│       ├── src/
-│       │   ├── main.rs         # application().with_assets().run(..)
-│       │   ├── app.rs          # init: actions, keybindings, menus, theme, window
-│       │   ├── actions.rs      # actions! declarations
-│       │   ├── vault.rs        # VaultStore entity (state + events)
-│       │   ├── watcher.rs      # notify -> async channel -> VaultStore::refresh
-│       │   ├── save.rs         # SaveDebouncer
-│       │   ├── platform.rs     # per-OS labels ("Reveal in Finder" / "Show in Explorer" / ...)
-│       │   └── ui/
-│       │       ├── workspace.rs        # root view: title bar + resizable(sidebar, detail)
-│       │       ├── title_bar.rs
-│       │       ├── sidebar.rs          # header icon bar + FileTree / "No Vault Open"
-│       │       ├── file_tree.rs        # custom tree on uniform_list (see §6.2)
-│       │       ├── editor_pane.rs      # breadcrumb, view-mode toggle, editor/preview, status bar
-│       │       ├── formatter_bar.rs
-│       │       ├── preview.rs
-│       │       ├── live_editor/        # Live stage B custom editor (§6.9)
-│       │       ├── status_bar.rs
-│       │       ├── quick_switcher.rs
-│       │       ├── empty_state.rs
-│       │       └── dialogs.rs          # rename prompt, delete confirm
-│       └── assets/                     # app icon, extra icons if needed
-├── packaging/                  # macOS bundle, Windows icon/manifest, Linux .desktop
-└── docs/
+│   ├── kunotes-core/          # LIBRARY: pure logic, no GPUI, fully unit-tested
+│   │   ├── Cargo.toml
+│   │   ├── src/
+│   │   │   ├── lib.rs         # lists the modules; start reading here
+│   │   │   ├── error.rs       # CoreError
+│   │   │   ├── node.rs        # VaultNode + scan a folder into a tree
+│   │   │   ├── search.rs      # flatten files, quick-switcher filter, tree visible rows
+│   │   │   ├── fs_ops.rs      # create / rename / move / trash, atomic_write, unique names
+│   │   │   ├── names.rs       # filename validation (cross-platform rules)
+│   │   │   ├── paths.rs       # relative path, breadcrumb parts
+│   │   │   ├── format.rs      # formatter-bar transforms (bold, link, heading, ...)
+│   │   │   ├── cursor.rs      # byte offset -> (line, col), character count
+│   │   │   ├── settings.rs    # Settings + load/save JSON
+│   │   │   └── live.rs        # Live-mode logic (Phase 10; may become live/ folder)
+│   │   └── tests/             # integration tests that touch the real filesystem
+│   │       └── fs_ops.rs
+│   └── kunotes/               # BINARY: the GPUI desktop app
+│       ├── Cargo.toml
+│       └── src/
+│           ├── main.rs        # entry point only: logging + start the app
+│           ├── app.rs         # setup: theme, menus, open the main window
+│           ├── actions.rs     # every action + its keybinding, in one place
+│           ├── platform.rs    # the ONLY place for OS-specific code and wording
+│           ├── vault_store.rs # VaultStore entity: shared app state + events
+│           ├── watcher.rs     # file watcher -> VaultStore::refresh
+│           ├── autosave.rs    # SaveDebouncer
+│           └── ui/            # all views, grouped by feature
+│               ├── mod.rs
+│               ├── workspace.rs       # root view: title bar + sidebar + editor
+│               ├── title_bar.rs
+│               ├── sidebar/
+│               │   ├── mod.rs         # Sidebar view: header buttons + tree
+│               │   └── file_tree.rs   # FileTree (uniform_list rows, DnD, context menu)
+│               ├── editor/
+│               │   ├── mod.rs         # EditorPane: loads a file, switches view modes
+│               │   ├── formatter_bar.rs
+│               │   ├── preview.rs
+│               │   ├── status_bar.rs
+│               │   └── live/          # custom Live editor (Phase 10)
+│               ├── quick_switcher.rs
+│               ├── dialogs.rs         # rename prompt, delete confirm
+│               └── empty_state.rs
+├── assets/                    # app icon and images used at runtime
+├── fixtures/sample-vault/     # sample notes for manual testing
+├── packaging/                 # per-OS bundling files (Phase 8)
+├── docs/
+└── .github/workflows/         # CI
 ```
 
-**Why split `kunotes-core`?** Vault scanning, file operations, name validation, path math, and text transforms are all pure logic. Keeping them out of the GPUI crate means `cargo test -p kunotes-core` builds in seconds, runs headless on CI for all three OSes, and keeps UI code thin.
+### Why two crates?
 
----
+- **`kunotes-core`** has no GPUI dependency. Its tests build in seconds and run headless on every OS. Anything that can be written without GPUI belongs here: file operations, parsing, text transforms.
+- **`kunotes`** is the app. It only does layout, events, and wiring. It calls into `kunotes-core` for the real work.
+
+This split is the main "best practice" in the layout. Keeping business logic out of the UI keeps both sides simple.
+
+### Rules for adding code
+
+1. **Start with one file.** Make a folder only when a module needs more than one file (as with `ui/sidebar/` and `ui/editor/`). Don't create empty folders "for later".
+2. **Folder modules use `mod.rs`** (`ui/editor/mod.rs`), so everything for a feature lives inside its folder.
+3. **Group UI by feature, not by type.** All editor views go in `ui/editor/`. There are no `components/` or `widgets/` folders.
+4. **One main type per file, named after the file:** `file_tree.rs` → `FileTree`, `vault_store.rs` → `VaultStore`.
+5. **At most two folder levels under `src/`** (`ui/editor/live/` is the deepest).
+6. **Every file starts with a `//!` comment** that says what it's for, in one or two lines.
+7. **Keep files under ~400 lines.** Past that, split by responsibility.
+8. **Tests:**
+   - Unit tests go at the bottom of the same file in `#[cfg(test)] mod tests`.
+   - Tests that create real files go in `crates/kunotes-core/tests/`.
+9. **Visibility:** keep items private by default. Use `pub` only for what another module needs. Use `pub(crate)` for helpers shared inside a crate.
+
+### Where does my code go?
+
+| I'm writing… | Put it in |
+|---|---|
+| Logic that doesn't need GPUI (parsing, paths, file ops, text math) | `kunotes-core/src/<topic>.rs` + tests |
+| A new shortcut or menu command | `kunotes/src/actions.rs` (define and bind), handler in the view that owns it |
+| State shared by several views | `vault_store.rs` (or a new `<name>_store.rs` entity if it's unrelated to the vault) |
+| A new view for an existing feature | that feature's folder in `ui/` |
+| A new feature with a single view | `ui/<feature>.rs` |
+| Code that differs per OS | `platform.rs` |
 
 ## 4. Runtime model
 
@@ -215,7 +257,7 @@ Settings are written atomically and saved on change (debounced). A missing or co
 
 ## 6. Components
 
-### 6.1 Sidebar (`ui/sidebar.rs`)
+### 6.1 Sidebar (`ui/sidebar/mod.rs`)
 
 The header icon bar, left to right:
 
@@ -232,7 +274,7 @@ The body shows `FileTree` when a vault is open. Otherwise it shows "No Vault Ope
 
 The delete keybinding is scoped to the `FileTree` key context, so it can never fire while typing in the editor.
 
-### 6.2 File tree (`ui/file_tree.rs`): custom, not `Tree`
+### 6.2 File tree (`ui/sidebar/file_tree.rs`): custom, not `Tree`
 
 The gpui-kit `Tree` component's docs don't cover double-click, context menus, or drag-and-drop, and they don't expose expansion changes. We need expansion to survive rescans triggered by the watcher.
 
@@ -257,7 +299,7 @@ fn visible_rows(root: &VaultNode, expanded: &HashSet<PathBuf>) -> Vec<VisibleRow
 
 If Phase 0 shows that `Tree` can cover all of this cleanly, swapping it in is a contained change, because `visible_rows` and the `expanded` set stay the same.
 
-### 6.3 Editor pane (`ui/editor_pane.rs`)
+### 6.3 Editor pane (`ui/editor/mod.rs`)
 
 A new `EditorPane` entity is created whenever `selected_file` changes, so per-file state never leaks between files.
 
@@ -279,7 +321,7 @@ A new `EditorPane` entity is created whenever `selected_file` changes, so per-fi
 - **Status bar** (`StatusBar` component): left `Ln {line}, Col {col}` (1-based, from the cursor offset via `kunotes_core::cursor`), right `{n} characters` (grapheme count). Monospace 11px.
 - **Title:** the window title and the centered title-bar text show the file name without `.md`.
 
-### 6.4 Formatter bar (`ui/formatter_bar.rs`)
+### 6.4 Formatter bar (`ui/editor/formatter_bar.rs`)
 
 Each button calls a **pure** transform in `kunotes_core::format` and applies the result to the editor in one undoable replace. Then it sets the new selection or cursor.
 
@@ -299,7 +341,7 @@ Ranges are **UTF-8 byte offsets on char boundaries**, which matches GPUI's text 
 
 With no selection, transforms apply at the cursor position. They fall back to the end of the document only if the editor has never been focused.
 
-### 6.5 Preview (`ui/preview.rs`)
+### 6.5 Preview (`ui/editor/preview.rs`)
 
 - `TextView::markdown("preview", content).scrollable(true)` with selectable text (on by default) and ~25px padding.
 - It must render: headings H1–H6, paragraphs, bold, italic, inline code (accent color), links (accent color with underline, opened in the browser via `cx.open_url`), fenced code blocks (muted rounded background, monospace), ordered and unordered lists with nesting, task lists with checked and unchecked boxes, blockquotes (accent left bar, muted text), and thematic breaks.
@@ -325,7 +367,7 @@ With no selection, transforms apply at the cursor position. They fall back to th
 - No vault: a large muted folder-plus icon, "No Vault Selected", "Open a folder to use it as your vault.", and an [Open Vault…] button.
 - Vault open but no file selected: a note icon, "No File Selected", "Select a file from the sidebar to start writing."
 
-### 6.9 Live mode (`ui/live_editor/`)
+### 6.9 Live mode (`ui/editor/live/`)
 
 Live mode is a "realtime formatter", in the style of Obsidian Live Preview or Typora. It is **not** a rich-text WYSIWYG: there is no separate document model and no HTML round-trip. The raw markdown string stays the single source of truth, and Live mode is only a different way to draw and edit it. Saving writes exactly the characters in the buffer.
 
@@ -377,7 +419,7 @@ Editing requirements (the hard part; each needs tests or a manual check on all t
 - Smart list continuation: Enter on a list item continues the list, Enter on an empty item ends it.
 - The formatter bar and editor shortcuts use the same `kunotes_core::format` transforms as Source mode.
 
-Code layout: `ui/live_editor/{mod.rs, buffer.rs, blocks.rs, layout.rs, element.rs, input.rs, actions.rs}`. Pure parts (block parsing, marker ranges, cursor movement over hidden ranges, list continuation) live in `kunotes-core::live` with unit tests.
+Code layout: `ui/editor/live/{mod.rs, buffer.rs, layout.rs, element.rs, input.rs, actions.rs}`. Pure parts (block parsing, marker ranges, cursor movement over hidden ranges, list continuation) live in `kunotes-core::live` with unit tests.
 
 Fallback: if stage B can't hit the editing requirements on every OS, Live keeps stage A and stage B continues behind a setting.
 
@@ -385,7 +427,7 @@ Fallback: if stage B can't hit the editing requirements on every OS, Live keeps 
 
 ## 7. Data integrity
 
-### 7.1 Save pipeline (`save.rs`)
+### 7.1 Save pipeline (`autosave.rs`)
 
 ```
 InputEvent::Change ─► SaveDebouncer::schedule(content, path)

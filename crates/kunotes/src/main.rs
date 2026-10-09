@@ -1,3 +1,6 @@
+//! KuNotes entry point: sets up logging and starts the GPUI app.
+//! (Phase 0 placeholder window; real setup moves to `app.rs` in Phase 2.)
+
 use gpui_kit::component::button::{Button, ButtonVariants};
 use gpui_kit::*;
 

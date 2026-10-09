@@ -39,7 +39,7 @@ cargo test --workspace
 
 ## Docs
 
-- [Architecture](docs/ARCHITECTURE.md): stack, workspace layout, state model, components, cross-platform concerns, feature summary
+- [Architecture](docs/ARCHITECTURE.md): stack, project structure, state model, components, cross-platform concerns, feature summary
 - [Implementation plan](docs/implementation/PLAN.md): phased roadmap, feature checklist, risks
 - [Contributing](docs/CONTRIBUTION.md): setup, conventions, testing, PR checklist
 

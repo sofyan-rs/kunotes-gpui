@@ -76,9 +76,9 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done
 
 - [ ] `actions.rs`: `actions!(kunotes, [OpenVault, NewFile, NewFolder, DeleteSelection, RenameSelection, QuickSwitcher, ToggleSidebar, ViewLive, ViewSource, ViewSplit, ViewPreview, CycleViewMode, SaveNow, Quit])`.
 - [ ] `app.rs`: keybindings (§8.1), `cx.set_menus` (macOS), quit handling, theme follows system.
-- [ ] `vault.rs`: `VaultStore` entity with `open_vault`, `restore_last_vault`, `close_vault`, `refresh` (background scan + generation guard), and events.
+- [ ] `vault_store.rs`: `VaultStore` entity with `open_vault`, `restore_last_vault`, `close_vault`, `refresh` (background scan + generation guard), and events.
 - [ ] `ui/workspace.rs`: `TitleBar` (sidebar toggle, centered title) + `h_resizable` (sidebar 250, range 200–400, persisted width/visibility) + detail area.
-- [ ] `ui/sidebar.rs`: header icon bar with tooltips and disabled states; "No Vault Open" + button.
+- [ ] `ui/sidebar/mod.rs`: header icon bar with tooltips and disabled states; "No Vault Open" + button.
 - [ ] `ui/empty_state.rs`: both variants.
 - [ ] Open vault via `cx.prompt_for_paths` (directories only, prompt "Open Vault").
 - [ ] Restore the last vault on launch. Clear the setting if the folder is gone.
@@ -91,7 +91,7 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done
 
 **Goal:** a fully interactive file tree (§6.2).
 
-- [ ] `ui/file_tree.rs`: `uniform_list` over `visible_rows(root, expanded)`, rows rendered with `ListItem`, depth indent, chevron, and folder/file icons (selected row → white icon).
+- [ ] `ui/sidebar/file_tree.rs`: `uniform_list` over `visible_rows(root, expanded)`, rows rendered with `ListItem`, depth indent, chevron, and folder/file icons (selected row → white icon).
 - [ ] Single-click select. Double-click a folder to toggle. Chevron click to toggle.
 - [ ] Keyboard navigation (`up`/`down`/`left`/`right`/`enter`) within the `FileTree` key context. Scroll the selection into view.
 - [ ] Expansion state lives in `VaultStore.expanded` and survives `refresh`. A newly created file's parent auto-expands.
@@ -110,16 +110,16 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done
 
 **Goal:** edit (Source mode), preview, and save (§6.3–§6.5, §7.1). Live mode comes in Phases 9–10; until then Source is the default.
 
-- [ ] `ui/editor_pane.rs`: recreated per file, loads content (lossy UTF-8 fallback with a warning), preserves line endings.
+- [ ] `ui/editor/mod.rs`: recreated per file, loads content (lossy UTF-8 fallback with a warning), preserves line endings.
 - [ ] Source editor: monospace 15px, soft wrap, padding, no line numbers, markdown highlighting.
-- [ ] `save.rs`: `SaveDebouncer` (500ms). Flush on file switch, vault switch/close, window close, app quit, and `secondary-s`. Uses `atomic_write` in the background.
+- [ ] `autosave.rs`: `SaveDebouncer` (500ms). Flush on file switch, vault switch/close, window close, app quit, and `secondary-s`. Uses `atomic_write` in the background.
 - [ ] Breadcrumb (relative path, chevrons, last segment emphasized).
 - [ ] View-mode segmented toggle (Source/Split/Preview for now; Live segment hidden until Phase 9) + `secondary-2/3/4`, `secondary-e` to cycle, persisted in settings.
-- [ ] `ui/preview.rs`: `TextView` markdown, scrollable, selectable, links open in the browser, ~150ms throttle in Split mode. Implement the pulldown-cmark fallback **only if** the Phase 0 spike found TextView insufficient.
+- [ ] `ui/editor/preview.rs`: `TextView` markdown, scrollable, selectable, links open in the browser, ~150ms throttle in Split mode. Implement the pulldown-cmark fallback **only if** the Phase 0 spike found TextView insufficient.
 - [ ] Split: `h_resizable` 50/50.
-- [ ] `ui/formatter_bar.rs`: 11 buttons in 5 groups with tooltips, wired to `kunotes_core::format` through one undoable replace each. Restores the selection/cursor and editor focus.
+- [ ] `ui/editor/formatter_bar.rs`: 11 buttons in 5 groups with tooltips, wired to `kunotes_core::format` through one undoable replace each. Restores the selection/cursor and editor focus.
 - [ ] Editor shortcuts: `secondary-b`, `secondary-i`, `secondary-shift-k`.
-- [ ] `ui/status_bar.rs`: `Ln, Col` + character count, updated on cursor move and edits.
+- [ ] `ui/editor/status_bar.rs`: `Ln, Col` + character count, updated on cursor move and edits.
 - [ ] Window/title-bar title = file stem.
 
 **Done when:** typing autosaves within ~0.5s, switching files or quitting mid-typing loses nothing (verified manually on each OS), the preview renders every element in `fixtures/sample-vault/Example.md` as specified in §6.5, and all formatter buttons behave as specified.
@@ -190,7 +190,7 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done
 **Goal:** Obsidian-style live preview (§6.9 stage B), replacing stage A as the Live implementation.
 
 - [ ] `kunotes-core::live`: block parsing with byte ranges (pulldown-cmark offset iter), marker ranges per block/inline span, "revealed" ranges for a cursor/selection, cursor movement over hidden ranges, list continuation. Unit tests for each.
-- [ ] `ui/live_editor/buffer.rs`: `ropey` buffer, undo/redo with grouping, incremental re-parse of edited blocks.
+- [ ] `ui/editor/live/buffer.rs`: `ropey` buffer, undo/redo with grouping, incremental re-parse of edited blocks.
 - [ ] `layout.rs`: per-block shaped lines with styled runs, heading sizes, soft wrap, visible-blocks-only layout.
 - [ ] `element.rs`: paint text, cursor, selection, checkbox, hr, code-block background, quote bar.
 - [ ] `input.rs`: `EntityInputHandler` (typing, IME marked text), mouse (click, drag, double/triple click, shift-click).
