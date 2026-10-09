@@ -20,7 +20,7 @@ use gpui_kit::{
     StatefulInteractiveElement as _, Styled as _, TestSupportExt as _, UniformListScrollHandle,
     Window, div, px, uniform_list,
 };
-use kunotes_core::paths::relative_path;
+use kunotes_core::paths::{can_move_into, relative_path};
 use kunotes_core::search::{VisibleRow, visible_rows};
 
 use crate::actions::{
@@ -256,15 +256,24 @@ impl FileTree {
                 cx.new(|_| DragPreview(entry.name.clone()))
             });
 
-        let item = if is_dir {
-            item.drag_over::<DraggedEntry>(move |style, _, _, _| style.bg(drop_color))
-                .on_drop(cx.listener(move |this, entry: &DraggedEntry, _, cx| {
-                    cx.stop_propagation();
+        // Every row catches drops, so a refused drop never falls through to the
+        // tree behind it (which would move the item to the vault root).
+        // Folders highlight and accept only moves that make sense; notes ignore drops.
+        let highlight_folder = drop_folder.clone();
+        let item = item
+            .drag_over::<DraggedEntry>(move |style, entry, _, _| {
+                if is_dir && can_move_into(&entry.path, &highlight_folder) {
+                    style.bg(drop_color)
+                } else {
+                    style
+                }
+            })
+            .on_drop(cx.listener(move |this, entry: &DraggedEntry, _, cx| {
+                cx.stop_propagation();
+                if is_dir && can_move_into(&entry.path, &drop_folder) {
                     this.on_drop_into(entry, &drop_folder, cx);
-                }))
-        } else {
-            item
-        };
+                }
+            }));
 
         let menu_vault = self.vault.clone();
         let menu_path = row.path.clone();
@@ -289,6 +298,7 @@ impl Render for FileTree {
             .map(|tree| visible_rows(tree, vault.expanded()))
             .unwrap_or_default();
         let root = vault.root().map(Path::to_path_buf);
+        let highlight_root = root.clone();
         let drop_color = cx.theme().drop_target;
 
         div()
@@ -303,10 +313,15 @@ impl Render for FileTree {
             .on_action(cx.listener(Self::collapse_folder))
             .on_action(cx.listener(Self::open_selected))
             .size_full()
-            // Dropping on empty space (not on a folder row) moves the item to the vault root.
-            .drag_over::<DraggedEntry>(move |style, _, _, _| style.bg(drop_color.opacity(0.3)))
+            // Dropping on empty space below the rows moves the item to the vault root.
+            .drag_over::<DraggedEntry>(move |style, entry, _, _| match &highlight_root {
+                Some(root) if can_move_into(&entry.path, root) => style.bg(drop_color.opacity(0.3)),
+                _ => style,
+            })
             .on_drop(cx.listener(move |this, entry: &DraggedEntry, _, cx| {
-                if let Some(root) = &root {
+                if let Some(root) = &root
+                    && can_move_into(&entry.path, root)
+                {
                     this.on_drop_into(entry, root, cx);
                 }
             }))

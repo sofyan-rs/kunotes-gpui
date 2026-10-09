@@ -156,3 +156,37 @@ fn dropping_on_empty_space_moves_to_the_vault_root(cx: &mut TestAppContext) {
     assert!(!plan.exists());
     assert!(s.path("Plan.md").exists());
 }
+
+#[gpui_kit::test]
+fn dropping_a_note_on_its_own_folder_keeps_it_there(cx: &mut TestAppContext) {
+    let s = setup(cx);
+    let projects = s.path("Projects");
+    let plan = s.path("Projects/Plan.md");
+
+    in_window(&s, cx, |window, cx| {
+        window.double_click(row_id(&projects), cx)
+    });
+    in_window(&s, cx, |window, cx| {
+        window.drag_to(row_id(&plan), row_id(&projects), cx)
+    });
+
+    assert!(plan.exists(), "must not fall through to the vault root");
+    assert!(!s.path("Plan.md").exists());
+}
+
+#[gpui_kit::test]
+fn dropping_on_a_note_does_nothing(cx: &mut TestAppContext) {
+    let s = setup(cx);
+    let projects = s.path("Projects");
+    let plan = s.path("Projects/Plan.md");
+
+    in_window(&s, cx, |window, cx| {
+        window.double_click(row_id(&projects), cx)
+    });
+    in_window(&s, cx, |window, cx| {
+        window.drag_to(row_id(&plan), row_id(&s.path("Welcome.md")), cx)
+    });
+
+    assert!(plan.exists());
+    assert!(!s.path("Plan.md").exists());
+}

@@ -168,17 +168,17 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done
 
 ---
 
-## Phase 7: Polish and feature audit
+## Phase 7: Polish and feature audit ✅ (manual OS checks pending)
 
-- [ ] Walk the full feature checklist below on each OS.
-- [ ] Menus: macOS native menu bar (App, File, Edit, View, Window). Windows/Linux title-bar menu with the same commands and shortcut hints.
-- [ ] Light and dark themes look right. Accent color is consistent.
-- [ ] Large-vault check (~10k files): launch, scan, quick-switcher filter, and tree scroll all stay smooth.
-- [ ] Large-note check (~1 MB markdown): typing latency is OK and preview throttling works.
-- [ ] HiDPI / fractional scaling check on Windows and Linux.
-- [ ] `env_logger` default level `warn` and `RUST_LOG` respected.
-
----
+- [x] Feature checklist (below) filled in from tests and screenshots. Cells marked ⬜ need a person at the machine.
+- [x] Menus: macOS native menu bar (KuNotes, File, Edit, View). The Edit menu (Undo/Redo/Cut/Copy/Paste/Select All) dispatches the editor's own actions. Windows/Linux use the same list through `AppMenuBar`.
+- [x] Light and dark themes checked by screenshot (macOS).
+- [x] Large-vault check (release build, 10k notes): scan 37 ms (background), all-expanded tree rows 0.6 ms, switcher filter 0.8 ms. Benchmarks are in `crates/kunotes-core/tests/perf.rs` (`--ignored`).
+- [x] Large-note check (1 MB): the character count took 31 ms per keystroke, so it now runs in the background on the 150 ms preview throttle. Line/col is 0.2 ms.
+- [x] Drag and drop: invalid targets no longer highlight. Every row catches drops, which fixes a drop on a note row falling through and moving the item to the vault root (regression tests added).
+- [x] `env_logger` default level `warn`, `RUST_LOG` respected.
+- [ ] HiDPI / fractional scaling on Windows and Linux (needs real machines).
+- [-] Not doing: a white icon on the selected row. gpui-kit's selection is a light tint in light mode, where white icons would vanish. The colored icons stay readable in both themes.
 
 ## Phase 8: Packaging and release
 
@@ -228,10 +228,35 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done
 
 ## Feature checklist
 
-Check off per OS during Phase 7 (Live rows after Phases 9 and 10).
+Legend: ✅ verified on that OS (UI/unit test run there, or screenshot) · 🧪 logic covered by CI tests on that OS, needs a visual check · ⬜ needs a manual check.
 
 | Feature | macOS | Windows | Fedora |
 |---|:-:|:-:|:-:|
+| Open folder as vault via native picker | ⬜ | ⬜ | ⬜ |
+| Reopen last vault on launch | ✅ | 🧪 | 🧪 |
+| Tree: folders + `.md` only, hidden files skipped, folders first, natural sort | ✅ | ✅ | ✅ |
+| Tree: single click selects, double-click / chevron toggles folder, arrow keys | ✅ | ✅ | ✅ |
+| Tree: drag-and-drop move into folder / vault root, invalid drops refused | ✅ | ✅ | ✅ |
+| Context menu: New Note/Folder, Rename, Delete, Reveal, Copy Path, Copy Relative Path | ⬜ | ⬜ | ⬜ |
+| New note (`Untitled.md` with `# Untitled` seed, unique suffix) / new folder | ✅ | ✅ | ✅ |
+| Rename (auto `.md`), with validation | ✅ | ✅ | ✅ |
+| Delete with confirmation → OS trash | 🧪 | 🧪 | 🧪 |
+| Source / Split / Preview modes | ✅ | ✅ | ✅ |
+| Live mode stage A (styled source) | ⬜ | ⬜ | ⬜ |
+| Live mode stage B (markers hidden off-cursor, checkboxes, IME) | ⬜ | ⬜ | ⬜ |
+| Formatter bar (B, I, H1, H2, link, inline code, code block, quote, bullet, numbered, hr) | ✅ | ✅ | ✅ |
+| Preview: headings, emphasis, inline code, code blocks, nested lists, task lists, quotes, links, hr | ✅ | ⬜ | ⬜ |
+| Debounced autosave + save on switch/quit, rename-follow, CRLF kept | ✅ | ✅ | ✅ |
+| Breadcrumb, status bar (Ln/Col + characters) | ✅ | ⬜ | ⬜ |
+| Quick switcher with keyboard nav | ✅ | ✅ | ✅ |
+| Live external sync | ✅ | ✅ | ✅ |
+| Sidebar resizable + toggleable, sizes remembered | ⬜ | ⬜ | ⬜ |
+| Edit menu / in-window menu bar | ⬜ | ⬜ | ⬜ |
+| Light / dark theme follows the system | ✅ | ⬜ | ⬜ |
+
+"Delete → OS trash" is 🧪 everywhere because the real-trash test is `#[ignore]`d (CI machines may lack a trash folder); the confirm/cancel flow is tested.
+
+---|:-:|:-:|:-:|
 | Open folder as vault via native picker | [ ] | [ ] | [ ] |
 | Reopen last vault on launch | [ ] | [ ] | [ ] |
 | Tree: folders + `.md` only, hidden files skipped, folders first, natural sort | [ ] | [ ] | [ ] |

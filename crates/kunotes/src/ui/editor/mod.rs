@@ -57,8 +57,11 @@ pub struct EditorPane {
     save_task: Option<Task<()>>,
     /// The text the preview shows (updated a little behind the editor while typing).
     preview_text: SharedString,
-    preview_task: Option<Task<()>>,
-    /// Cached because counting graphemes in a big note on every frame is slow.
+    /// Updates the preview and character count; `None` when idle.
+    refresh_task: Option<Task<()>>,
+    /// The text changed while `refresh_task` was running, so run it once more.
+    refresh_again: bool,
+    /// Counted in the background: counting a 1 MB note takes ~30 ms, too slow per keystroke.
     char_count: usize,
     _subscriptions: Vec<Subscription>,
 }
@@ -135,7 +138,8 @@ impl EditorPane {
             dirty: false,
             save_task: None,
             preview_text: text.clone().into(),
-            preview_task: None,
+            refresh_task: None,
+            refresh_again: false,
             char_count: cursor::char_count(&text),
             editor,
             _subscriptions: subscriptions,
@@ -146,6 +150,12 @@ impl EditorPane {
     #[cfg(test)]
     pub fn editor_state(&self) -> Entity<EditorState> {
         self.editor.clone()
+    }
+
+    /// The character count shown in the status bar. For tests.
+    #[cfg(test)]
+    pub fn char_count(&self) -> usize {
+        self.char_count
     }
 
     /// True if the note opened read-only (not valid UTF-8).
@@ -174,11 +184,9 @@ impl EditorPane {
     // ----- Saving -----
 
     fn on_text_changed(&mut self, cx: &mut Context<Self>) {
-        let text = self.editor.read(cx).value();
-        self.char_count = cursor::char_count(&text);
         self.dirty = true;
         self.schedule_save(cx);
-        self.schedule_preview(cx);
+        self.schedule_refresh(cx);
         cx.notify();
     }
 
@@ -210,18 +218,35 @@ impl EditorPane {
         self.save_now(cx);
     }
 
-    // ----- Preview -----
+    // ----- Preview and character count -----
 
-    /// Updates the preview at most every `PREVIEW_DELAY` while typing.
-    fn schedule_preview(&mut self, cx: &mut Context<Self>) {
-        if self.preview_task.is_some() {
-            return; // an update is already on its way and will pick up this change
+    /// Updates the preview and character count at most every `PREVIEW_DELAY`
+    /// while typing. The count runs on a background thread.
+    fn schedule_refresh(&mut self, cx: &mut Context<Self>) {
+        if self.refresh_task.is_some() {
+            self.refresh_again = true; // the running update will start one more
+            return;
         }
-        self.preview_task = Some(cx.spawn(async move |this, cx| {
+        self.refresh_task = Some(cx.spawn(async move |this, cx| {
             cx.background_executor().timer(PREVIEW_DELAY).await;
+            let Ok(text) = this.update(cx, |pane, cx| {
+                let text = pane.editor.read(cx).value();
+                pane.preview_text = text.clone();
+                cx.notify();
+                text
+            }) else {
+                return; // the pane was closed
+            };
+            // `SharedString` clones are cheap (shared, not copied).
+            let count = cx
+                .background_spawn(async move { cursor::char_count(&text) })
+                .await;
             let _ = this.update(cx, |pane, cx| {
-                pane.preview_text = pane.editor.read(cx).value();
-                pane.preview_task = None;
+                pane.char_count = count;
+                pane.refresh_task = None;
+                if std::mem::take(&mut pane.refresh_again) {
+                    pane.schedule_refresh(cx);
+                }
                 cx.notify();
             });
         }));

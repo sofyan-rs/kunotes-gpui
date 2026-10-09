@@ -3,6 +3,7 @@
 //! An action is a small struct that GPUI sends to the focused view when a shortcut
 //! is pressed or a menu item is clicked. Views handle them with `.on_action(..)`.
 
+use gpui_kit::component::input::{Copy, Cut, Paste, Redo, SelectAll, Undo};
 use gpui_kit::{App, KeyBinding, Menu, MenuItem, actions};
 
 use crate::platform;
@@ -99,6 +100,16 @@ pub fn app_menus() -> Vec<Menu> {
             MenuItem::action("Move to Trash", DeleteSelection),
             MenuItem::separator(),
             MenuItem::action("Close Vault", CloseVault),
+        ]),
+        // These are the text editor's own actions; its shortcuts show next to them.
+        Menu::new("Edit").items([
+            MenuItem::action("Undo", Undo),
+            MenuItem::action("Redo", Redo),
+            MenuItem::separator(),
+            MenuItem::action("Cut", Cut),
+            MenuItem::action("Copy", Copy),
+            MenuItem::action("Paste", Paste),
+            MenuItem::action("Select All", SelectAll),
         ]),
         Menu::new("View").items([
             MenuItem::action("Toggle Sidebar", ToggleSidebar),

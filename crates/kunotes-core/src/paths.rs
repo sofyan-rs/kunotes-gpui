@@ -72,6 +72,13 @@ pub fn is_hidden_within(root: &Path, path: &Path) -> bool {
         .any(|part| part.as_os_str().to_string_lossy().starts_with('.'))
 }
 
+/// True if moving `path` into `folder` would actually do something: the folder
+/// isn't the item itself, isn't inside it, and isn't where the item already is.
+/// (Only compares paths; `fs_ops::move_into` still checks the disk.)
+pub fn can_move_into(path: &Path, folder: &Path) -> bool {
+    !folder.starts_with(path) && path.parent() != Some(folder)
+}
+
 /// All folders between `root` (exclusive) and `path` (exclusive), outermost first.
 /// Used to expand the tree so a file becomes visible.
 pub fn ancestors_within(root: &Path, path: &Path) -> Vec<PathBuf> {
@@ -150,6 +157,22 @@ mod tests {
             "the vault root itself is visible"
         );
         assert!(is_hidden_within(&root(), Path::new("elsewhere/a.md")));
+    }
+
+    #[test]
+    fn can_move_into_rejects_self_descendants_and_current_folder() {
+        let projects = root().join("Projects");
+        let plan = projects.join("Plan.md");
+        assert!(can_move_into(&plan, &root()));
+        assert!(can_move_into(&plan, &root().join("Other")));
+        assert!(!can_move_into(&plan, &projects), "already there");
+        assert!(!can_move_into(&projects, &projects), "into itself");
+        assert!(
+            !can_move_into(&projects, &projects.join("Archive")),
+            "into its own child"
+        );
+        // "Projects2" only shares a text prefix with "Projects".
+        assert!(can_move_into(&projects, &root().join("Projects2")));
     }
 
     #[test]

@@ -174,3 +174,25 @@ fn windows_line_endings_survive_editing(cx: &mut TestAppContext) {
         "# Title\r\nBody\r\nMore"
     );
 }
+
+#[gpui_kit::test]
+fn character_count_follows_typing(cx: &mut TestAppContext) {
+    let s = setup(cx);
+    open_note(&s, cx, "Welcome.md");
+    let count = |cx: &mut TestAppContext| {
+        s.workspace.read_with(cx, |workspace, cx| {
+            workspace.editor().unwrap().read(cx).char_count()
+        })
+    };
+    assert_eq!(count(cx), 10); // "# Welcome\n"
+
+    type_at_end(&s, cx, "Hi");
+    wait(cx, 50); // the count is still waiting to run...
+    type_at_end(&s, cx, "!"); // ...and more typing arrives meanwhile
+    wait(cx, 1000);
+    assert_eq!(
+        count(cx),
+        13,
+        "the count includes typing that arrived mid-update"
+    );
+}
