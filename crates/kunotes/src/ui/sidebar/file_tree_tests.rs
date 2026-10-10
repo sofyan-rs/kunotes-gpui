@@ -389,3 +389,28 @@ fn right_click_on_a_row_opens_only_the_row_menu(cx: &mut TestAppContext) {
     assert!(row_menu, "the row's menu opens");
     assert!(!root_menu_open(&s, cx), "the empty-space menu stays closed");
 }
+
+#[gpui_kit::test]
+fn clicking_empty_space_clears_the_selection(cx: &mut TestAppContext) {
+    let s = setup(cx);
+    let projects = s.path("Projects");
+    in_window(&s, cx, |window, cx| window.click(row_id(&projects), cx));
+    assert_eq!(selected(&s, cx), Some(projects));
+
+    in_window(&s, cx, |window, cx| {
+        let bounds = window.find("file-tree-background").bounds();
+        let empty = point(bounds.left() + px(20.), bounds.bottom() - px(20.));
+        window.dispatch_event(
+            MouseDownEvent {
+                button: MouseButton::Left,
+                position: empty,
+                modifiers: Default::default(),
+                click_count: 1,
+                first_mouse: false,
+            }
+            .to_platform_input(),
+            cx,
+        );
+    });
+    assert_eq!(selected(&s, cx), None);
+}

@@ -215,6 +215,14 @@ impl VaultStore {
         cx.emit(VaultEvent::KeepOpen(path));
     }
 
+    /// Nothing is selected in the tree (a click on its empty space). The open
+    /// note stays open; new notes then go in the vault root.
+    pub fn clear_tree_selection(&mut self, cx: &mut Context<Self>) {
+        if self.selected_path.take().is_some() {
+            cx.notify();
+        }
+    }
+
     /// No note is shown in the editor (e.g. its last tab was closed).
     pub fn clear_selected_file(&mut self, cx: &mut Context<Self>) {
         if self.selected_file.take().is_some() {

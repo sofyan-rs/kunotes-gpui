@@ -348,8 +348,10 @@ impl FileTree {
         div()
             .id(row_id(&row.path))
             .test_support()
-            // The row's own menu has opened; keep the empty-space menu closed.
+            // Clicks on a row are the row's: keep them from reaching the empty-space
+            // layer behind the rows (its menu, and its "clear the selection").
             .on_mouse_down(MouseButton::Right, |_, _, cx| cx.stop_propagation())
+            .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
             .child(item)
             .into_any_element()
     }
@@ -403,6 +405,15 @@ impl Render for FileTree {
                         .id("file-tree-background")
                         .test_support()
                         .size_full()
+                        // A click on empty space clears the selection, like VS Code.
+                        .on_mouse_down(
+                            MouseButton::Left,
+                            cx.listener(|tree, _, window, cx| {
+                                tree.vault
+                                    .update(cx, |vault, cx| vault.clear_tree_selection(cx));
+                                window.focus(&tree.focus_handle, cx);
+                            }),
+                        )
                         .context_menu(move |menu, _, cx| match &menu_root {
                             Some(root) => context_menu::build_for_root(
                                 menu,
