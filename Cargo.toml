@@ -29,6 +29,8 @@ notify-debouncer-full = "0.6"
 futures = "0.3"
 # Locked notes: the age encryption format (https://age-encryption.org).
 age = { version = "0.12", features = ["armor"] }
+# App updates: checking downloaded packages against the release's SHA256SUMS.
+sha2 = "0.10"
 
 # Framework crates are optimized even in debug builds so the app stays responsive.
 [profile.dev.package]

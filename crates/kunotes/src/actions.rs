@@ -27,6 +27,7 @@ actions!(
         LockNotes,
         CollapseFolders,
         About,
+        CheckForUpdates,
         Quit,
     ]
 );
@@ -141,6 +142,7 @@ pub fn app_menus() -> Vec<Menu> {
     vec![
         Menu::new("KuNotes").items([
             MenuItem::action("About KuNotes", About),
+            MenuItem::action("Check for Updates…", CheckForUpdates),
             MenuItem::separator(),
             MenuItem::action("Quit KuNotes", Quit),
         ]),

@@ -50,6 +50,8 @@ pub struct Settings {
     pub active_tab: Option<usize>,
     /// Vaults with git sync turned on (the remote itself is in each vault's `.git`).
     pub synced_vaults: Vec<PathBuf>,
+    /// Look for a new KuNotes release on GitHub at launch.
+    pub check_for_updates: bool,
 }
 
 impl Default for Settings {
@@ -62,6 +64,7 @@ impl Default for Settings {
             open_tabs: Vec::new(),
             active_tab: None,
             synced_vaults: Vec::new(),
+            check_for_updates: true,
         }
     }
 }
@@ -105,6 +108,7 @@ mod tests {
     fn defaults_show_sidebar_in_live_mode() {
         let settings = Settings::default();
         assert!(settings.sidebar_visible);
+        assert!(settings.check_for_updates);
         assert_eq!(settings.view_mode, ViewMode::Live);
         assert_eq!(settings.last_vault, None);
     }

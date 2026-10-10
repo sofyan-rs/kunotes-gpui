@@ -73,6 +73,7 @@ kunotes-gpui/
 │   │   │   ├── cursor.rs      # byte offset -> (line, col), character count
 │   │   │   ├── line_ending.rs # keep \n or \r\n unchanged across load/save
 │   │   │   ├── settings.rs    # Settings + load/save JSON
+│   │   │   ├── update.rs      # app updates from GitHub Releases (runs `curl`)
 │   │   │   ├── live.rs        # markdown parts (spans) for Live and Source styling
 │   │   │   ├── live_view.rs   # what each Live line draws; drawn ⇄ file positions
 │   │   │   ├── live_table.rs  # tables: find them, split rows into cells
@@ -92,6 +93,7 @@ kunotes-gpui/
 │           ├── settings_store.rs # Settings as a GPUI global, saved on change
 │           ├── vault_store.rs # VaultStore entity: shared app state + events
 │           ├── watcher.rs     # file watcher -> VaultStore::refresh
+│           ├── updater.rs     # Updater entity: check at launch / on demand, install
 │           └── ui/            # all views, grouped by feature
 │               ├── mod.rs
 │               ├── workspace.rs       # root view: title bar + sidebar + editor
@@ -115,6 +117,7 @@ kunotes-gpui/
 │               │   └── live/          # custom Live editor: mod, keys, input, layout, style, table, element
 │               ├── editor_area/       # tabs: EditorArea (mod.rs), tab_bar.rs, tests
 │               ├── git_sync_dialog.rs # enter the remote address / turn sync off
+│               ├── update_dialog.rs   # "update available" / "restart to finish"
 │               ├── quick_switcher.rs
 │               ├── quick_switcher_tests.rs
 │               ├── dialogs.rs         # delete confirmation
@@ -476,6 +479,24 @@ For notes holding credentials: the note is **encrypted on disk**, so it's unread
 - Limits: plaintext is in memory while shown (not zeroized); file names aren't encrypted.
 - Tests: `kunotes-core/tests/lock.rs` (password, round trip, wrong password, other vault's key), `ui/note_lock_tests.rs` (lock an open note, encrypted autosave, lock hides the text, unlock restores it).
 
+
+### 6.13 App updates (`kunotes-core/src/update.rs`, `updater.rs`, `ui/update_dialog.rs`)
+
+KuNotes updates itself from this repository's **GitHub Releases**; there's no KuNotes update server.
+
+- **Publishing** (`.github/workflows/release.yml`): pushing a tag `vX.Y.Z` (it must match the `Cargo.toml` version, or the workflow fails) builds and publishes a release with fixed asset names: `KuNotes-macos-arm64.zip` (the `.app`, zipped with `ditto`), `KuNotes-windows-x64.zip` (`KuNotes.exe`), `KuNotes-fedora-x86_64.rpm`, and `SHA256SUMS`. The `.dmg` is also attached for first installs.
+- **Uses installed programs**, like git sync: `curl` for HTTPS (built into macOS, Windows 10+, Fedora), `ditto` (macOS) and `tar` (Windows) to unpack. No HTTP or TLS library is linked in. On Windows they run with `CREATE_NO_WINDOW`.
+- **Check** (`update::fetch_latest_release`): `GET api.github.com/repos/…/releases/latest`; 404 means nothing released yet. A release is offered when its tag is a higher `major.minor.patch` than `CARGO_PKG_VERSION`. Drafts and pre-releases are never offered.
+- **When** (`Updater` entity, owned by `Workspace`): once, 5 s after launch, in release builds with `Settings::check_for_updates` on (default; quiet unless there's an update), and on *KuNotes → Check for Updates…* (always reports the result).
+- **Install** (`update::download_and_install`, background thread) after the user clicks *Install Update*: download `SHA256SUMS` and this system's package into a temp folder, **refuse it if the SHA-256 doesn't match**, then:
+  - macOS: unpack next to the running `KuNotes.app`, rename the running app aside, rename the new one in, remove the old one. Only a bundled app updates itself (a dev build says so).
+  - Windows: unpack, rename the running exe to `KuNotes.exe.old` (allowed while running), move the new exe in. The `.old` file is removed on the next launch.
+  - Fedora: `pkexec dnf install -y <rpm>` (system password prompt). Only for the rpm install at `/usr/bin/kunotes`; other installs are told to download it.
+  - A failed swap renames the original back, so the app is never left missing.
+- **Restart**: a dialog offers *Restart Now* → `cx.set_restart_path(path)` + `cx.restart()`. GPUI quits (running the save-on-quit handlers, so open notes are saved), waits for the process to exit, then starts the new version. *Later* keeps working; the new version starts next time.
+- Limits: the checksum guards against damaged downloads, not a compromised GitHub account (no separate signing key yet). macOS packages are ad-hoc signed; the updater's download isn't quarantined, so no Gatekeeper prompt. Intel Macs and Linux ARM have no package yet.
+- Tests: `update.rs` unit tests (release JSON, version compare, package names, checksum lines); `kunotes-core/tests/update.rs` (swap, rollback, SHA-256, cleanup; an ignored test calls GitHub).
+
 ---
 
 ## 7. Data integrity
@@ -591,6 +612,7 @@ A Wayland or X11 session with a working Vulkan driver (`vulkan-loader` plus Mesa
 | Live sync | Changes made outside the app appear in the tree | §7.2 |
 | Git sync | Optional: sync the vault with the user's git remote (auto + manual), conflicts kept as copies | §6.11 |
 | Locked notes | Encrypt notes with credentials (age, one vault password), auto-lock after 5 min | §6.12 |
+| Updates | Check GitHub Releases at launch and on demand; download, verify (SHA-256), install, restart | §6.13 |
 | Layout | Resizable, toggleable sidebar; view mode and sidebar width remembered | §5, §4.3 |
 
 ---

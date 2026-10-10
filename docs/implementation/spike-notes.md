@@ -147,3 +147,9 @@ cx.spawn(async move |this, cx| if let Ok(Ok(Some(paths))) = rx.await { .. }).det
 - **Memory: avoid vector paths.** The first `window.paint_path` makes the Metal renderer keep a window-sized BGRA texture (`path_intermediate_texture`) for good: ~13 MB on a 1680×970 window, ~30 MB fullscreen on Retina. The Live checkbox's check mark used a path; it's now the `icons/check.svg` sprite via `window.paint_svg`, which took the app from ~64 MB to ~50 MB with a note open. Most of the rest is the window's frame buffers (IOSurface, 2–3 window-sized buffers; GPUI hardcodes `maximumDrawableCount = 3`) and GPU buffers; the heap is ~10–14 MB.
 - **Password fields:** `InputState::new(window, cx).masked(true)` (gpui-base `InputState::masked`); the component `Input` also has `.mask_toggle()` for a show/hide button.
 - **Encryption:** the `age` crate 0.12 (`armor` feature): `age::encrypt_and_armor(&recipient, bytes)`, `age::decrypt(&identity, bytes)` (handles armor), `age::scrypt::{Recipient, Identity}` for passphrases, `age::x25519::Identity::generate()` / `.to_public()` / `.to_string()` (a `SecretString`). scrypt is set to `opt-level = 3` in the dev profile, or unlocking takes many seconds in debug builds.
+
+## App updates findings
+
+- **Restart:** `cx.set_restart_path(path)` then `cx.restart()` (gpui-pre `App`). Each platform spawns a helper that waits for this process to exit, then starts `path` (macOS: `bash` loop + `open <App>.app`; Linux: `bash` loop + exec; Windows: a PowerShell loop + `Start-Process`). It quits through the normal path, so `on_app_quit` handlers (saving notes, settings) still run.
+- **`app_path()`** is `current_exe()` on Windows and Linux. On Linux, after the rpm replaces `/usr/bin/kunotes`, `current_exe()` of the running process can read `… (deleted)`, so the updater always passes the restart path explicitly.
+

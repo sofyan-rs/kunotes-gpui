@@ -189,6 +189,9 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done
 - [ ] Windows: `.msi` installer (needs the WiX toolset on the runner) and code signing.
 - [x] Linux (Fedora): `packaging/linux/id.sofyan.KuNotes.desktop` + icons + binary packed by `cargo generate-rpm -p crates/kunotes` (metadata in `crates/kunotes/Cargo.toml`, requires `vulkan-loader`). The window `app_id` is `id.sofyan.KuNotes`, so Wayland matches the window to the `.desktop` file. Asset layout verified locally.
 - [x] `.github/workflows/release.yml`: a `v*` tag builds the `.dmg`, `.zip`, and `.rpm`, then publishes a GitHub Release with notes. Running it by hand builds artifacts only.
+- [x] Release workflow: the tag must match the `Cargo.toml` version; fixed updater asset names (`KuNotes-macos-arm64.zip`, `KuNotes-windows-x64.zip`, `KuNotes-fedora-x86_64.rpm`) + `SHA256SUMS`.
+- [x] In-app updates (ARCHITECTURE §6.13): check GitHub Releases at launch and via *Check for Updates…*, download with `curl`, verify SHA-256, swap the app (macOS `.app`, Windows exe) or `pkexec dnf install` (Fedora), then restart via `cx.restart()`. 6 unit + 4 filesystem tests; macOS bundle swap verified locally with a real `bundle.sh` zip.
+- [ ] Publish the first release (`v0.1.0`) and try a real update end to end on each OS (needs a second release, e.g. `v0.1.1`).
 - [ ] Root `README.md` with screenshots from each OS.
 
 ## Post-v1 polish (done)
@@ -262,7 +265,7 @@ Legend: ✅ verified on that OS (UI/unit test run there, or screenshot) · 🧪 
 
 | Feature | macOS | Windows | Fedora |
 |---|:-:|:-:|:-:|
-| Open folder as vault via native picker | ⬜ | ⬜ | ⬜ |
+| Open folder as vault via native picker | ✅ | ⬜ | ⬜ |
 | Reopen last vault on launch | ✅ | 🧪 | 🧪 |
 | Tree: folders + `.md` only, hidden files skipped, folders first, natural sort | ✅ | ✅ | ✅ |
 | Tree: single click selects, double-click / chevron toggles folder, arrow keys | ✅ | ✅ | ✅ |

@@ -38,6 +38,10 @@ pub enum CoreError {
     #[error("{0}")]
     Git(String),
 
+    /// Checking for, downloading, or installing an app update; the text says why.
+    #[error("{0}")]
+    Update(String),
+
     #[error(transparent)]
     Io(#[from] io::Error),
 }

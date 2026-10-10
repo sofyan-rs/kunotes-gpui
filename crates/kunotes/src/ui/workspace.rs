@@ -10,15 +10,17 @@ use gpui_kit::{
 use kunotes_core::settings::ViewMode;
 
 use crate::actions::{
-    About, CloseAllTabs, CloseOtherTabs, CloseSavedTabs, CloseTab, CloseTabsToTheRight, CloseVault,
-    CollapseFolders, CycleViewMode, DeleteSelection, LockNotes, NewFile, NewFolder, NextTab,
-    OpenVault, PreviousTab, QuickSwitcher, RenameSelection, ToggleNoteLock, TogglePinTab,
-    ToggleSidebar, ViewLive, ViewPreview, ViewSource, ViewSplit, WORKSPACE,
+    About, CheckForUpdates, CloseAllTabs, CloseOtherTabs, CloseSavedTabs, CloseTab,
+    CloseTabsToTheRight, CloseVault, CollapseFolders, CycleViewMode, DeleteSelection, LockNotes,
+    NewFile, NewFolder, NextTab, OpenVault, PreviousTab, QuickSwitcher, RenameSelection,
+    ToggleNoteLock, TogglePinTab, ToggleSidebar, ViewLive, ViewPreview, ViewSource, ViewSplit,
+    WORKSPACE,
 };
 use crate::git_sync::{GitSync, GitSyncEvent};
 use crate::settings_store::SettingsStore;
 use crate::ui::editor_area::EditorArea;
-use crate::ui::{dialogs, note_lock, quick_switcher, sidebar::Sidebar, title_bar};
+use crate::ui::{dialogs, note_lock, quick_switcher, sidebar::Sidebar, title_bar, update_dialog};
+use crate::updater::{Updater, UpdaterEvent};
 use crate::vault_lock::VaultLock;
 use crate::vault_store::{VaultEvent, VaultStore};
 
@@ -35,6 +37,8 @@ pub struct Workspace {
     git_sync: Entity<GitSync>,
     /// Whether locked notes are unlocked (holds the vault key while they are).
     vault_lock: Entity<VaultLock>,
+    /// Looks for and installs new KuNotes releases.
+    updater: Entity<Updater>,
     focus_handle: FocusHandle,
     /// Kept alive so our listeners keep working; dropping one unsubscribes it.
     _subscriptions: Vec<Subscription>,
@@ -55,6 +59,7 @@ impl Workspace {
             cx.new(|cx| EditorArea::new(vault.clone(), vault_lock.clone(), window, cx));
         let git_sync = cx.new(|cx| GitSync::new(vault.clone(), editor_area.clone(), cx));
         let sidebar = cx.new(|cx| Sidebar::new(vault.clone(), git_sync.clone(), cx));
+        let updater = cx.new(Updater::new);
 
         let subscriptions = vec![
             // Keep the window title in step with the vault and the active tab.
@@ -97,6 +102,16 @@ impl Workspace {
                     GitSyncEvent::Message(message) => window.push_notification(message.clone(), cx),
                 },
             ),
+            // A new version: offer to install it, then to restart.
+            cx.subscribe_in(&updater, window, |this, _, event, window, cx| match event {
+                UpdaterEvent::Available(release) => {
+                    update_dialog::offer_update(release.clone(), this.updater.clone(), window, cx)
+                }
+                UpdaterEvent::Installed { version, path } => {
+                    update_dialog::offer_restart(version.clone(), path.clone(), window, cx)
+                }
+                UpdaterEvent::Message(message) => window.push_notification(message.clone(), cx),
+            }),
             // Show file operation errors.
             cx.subscribe_in(&vault, window, |_, _, event, window, cx| {
                 if let VaultEvent::Error(message) = event {
@@ -129,6 +144,7 @@ impl Workspace {
             editor_area,
             git_sync,
             vault_lock,
+            updater,
             focus_handle,
             _subscriptions: subscriptions,
         }
@@ -314,6 +330,11 @@ impl Workspace {
         dialogs::about(window, cx);
     }
 
+    fn check_for_updates(&mut self, _: &CheckForUpdates, _: &mut Window, cx: &mut Context<Self>) {
+        self.updater
+            .update(cx, |updater, cx| updater.check(true, cx));
+    }
+
     fn delete_selection(
         &mut self,
         _: &DeleteSelection,
@@ -372,6 +393,7 @@ impl Render for Workspace {
             .on_action(cx.listener(Self::collapse_folders))
             .on_action(cx.listener(Self::toggle_note_lock))
             .on_action(cx.listener(Self::about))
+            .on_action(cx.listener(Self::check_for_updates))
             .on_action(cx.listener(Self::close_vault))
             .on_action(cx.listener(Self::new_file))
             .on_action(cx.listener(Self::new_folder))
