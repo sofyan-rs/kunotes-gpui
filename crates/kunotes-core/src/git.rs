@@ -340,6 +340,9 @@ fn git_command(root: &Path) -> Command {
         .env("GCM_INTERACTIVE", "never")
         .env("LC_ALL", "C") // English messages, so errors can be recognised
         .args(["-c", "core.quotepath=false"])
+        // Sync files byte for byte: no `\n` ⇄ `\r\n` rewriting (common on
+        // Windows), since KuNotes keeps each file's own line endings.
+        .args(["-c", "core.autocrlf=false"])
         .stdin(Stdio::null());
     // Signing in to GitHub over HTTPS: let git borrow the GitHub CLI's login,
     // like `gh auth setup-git` would, without changing the user's git config.
