@@ -2,6 +2,10 @@ name: Release
 
 # Push a tag like `v0.1.0` to build all packages and publish a GitHub Release.
 # "Run workflow" (manual) builds the same packages as downloadable artifacts only.
+#
+# The in-app updater (crates/kunotes-core/src/update.rs) looks for these exact
+# asset names in the latest release, plus SHA256SUMS:
+#   KuNotes-macos-arm64.zip, KuNotes-windows-x64.zip, KuNotes-fedora-x86_64.rpm
 on:
   push:
     tags: ["v*"]
@@ -14,8 +18,23 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
+  version:
+    name: Tag matches Cargo.toml
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Check the version
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          cargo_version=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)
+          if [ "${GITHUB_REF_NAME#v}" != "$cargo_version" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME doesn't match Cargo.toml version $cargo_version"
+            exit 1
+          fi
+
   macos:
-    name: macOS (.dmg)
+    name: macOS (.dmg, .zip)
+    needs: version
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v5
@@ -25,10 +44,13 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: macos
-          path: target/release/bundle/macos/*.dmg
+          path: |
+            target/release/bundle/macos/*.dmg
+            target/release/bundle/macos/*.zip
 
   windows:
     name: Windows (.zip)
+    needs: version
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v5
@@ -48,6 +70,7 @@ jobs:
 
   fedora:
     name: Fedora (.rpm)
+    needs: version
     runs-on: ubuntu-latest
     container: fedora:latest
     steps:
@@ -63,10 +86,12 @@ jobs:
       - run: cargo build --release -p kunotes
       - run: cargo install cargo-generate-rpm --locked
       - run: cargo generate-rpm -p crates/kunotes
+      # A fixed name, so the updater can find it in any release.
+      - run: cp target/generate-rpm/*.rpm KuNotes-fedora-x86_64.rpm
       - uses: actions/upload-artifact@v4
         with:
           name: fedora
-          path: target/generate-rpm/*.rpm
+          path: KuNotes-fedora-x86_64.rpm
 
   publish:
     name: Publish GitHub Release
@@ -78,6 +103,10 @@ jobs:
         with:
           path: dist
           merge-multiple: true
+      # The updater installs a package only if its checksum matches this file.
+      - name: Write SHA256SUMS
+        working-directory: dist
+        run: sha256sum * > SHA256SUMS && cat SHA256SUMS
       - uses: softprops/action-gh-release@v2
         with:
           files: dist/*

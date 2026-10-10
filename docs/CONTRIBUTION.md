@@ -58,13 +58,18 @@ A test vault: open `fixtures/sample-vault/`. Its `Example.md` uses every markdow
 
 | OS | Command | Output |
 |---|---|---|
-| macOS | `packaging/macos/bundle.sh` | `target/release/bundle/macos/KuNotes.app` + `.dmg` |
+| macOS | `packaging/macos/bundle.sh` | `target/release/bundle/macos/KuNotes.app` + `.dmg` + `KuNotes-macos-arm64.zip` (updater package) |
 | Windows | `cargo build --release -p kunotes` | `target/release/kunotes.exe` (icon embedded) |
 | Fedora | `cargo build --release -p kunotes && cargo generate-rpm -p crates/kunotes` (`cargo install cargo-generate-rpm` once) | `target/generate-rpm/*.rpm` |
 
 The icon master is `assets/icon/kunotes.png`. After changing it, run `packaging/make_icons.sh` (macOS) and commit the regenerated files.
 
-**Releasing:** push a tag such as `git tag v0.1.0 && git push origin v0.1.0`. The Release workflow builds all three packages and publishes a GitHub Release. To test packaging without releasing, run the workflow manually from the Actions tab and download the artifacts.
+**Releasing:**
+1. Bump `version` in the root `Cargo.toml` (`[workspace.package]`), run `cargo build` so `Cargo.lock` follows, and commit (`chore(release): v0.2.0`).
+2. Tag and push: `git tag v0.2.0 && git push origin main v0.2.0`. The tag must match the `Cargo.toml` version or the workflow stops.
+3. The Release workflow builds all three packages, writes `SHA256SUMS`, and publishes a GitHub Release with generated notes. Installed copies of KuNotes find it at their next launch (or *Check for Updates…*) and offer to install it (ARCHITECTURE §6.13).
+
+Don't rename the release assets: the updater looks for those exact names. To test packaging without releasing, run the workflow manually from the Actions tab and download the artifacts.
 
 ---
 

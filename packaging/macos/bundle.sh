@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
-# Builds KuNotes.app and KuNotes-<version>-<arch>.dmg in target/release/bundle/macos/.
+# Builds KuNotes.app, KuNotes-<version>-<arch>.dmg (to install by hand), and
+# KuNotes-macos-<arm64|x64>.zip (what the in-app updater downloads) in
+# target/release/bundle/macos/.
 # Usage: packaging/macos/bundle.sh
 # The app is signed ad hoc (runs on this Mac; other Macs need right-click → Open
 # until it's signed with a Developer ID and notarized).
@@ -30,5 +32,16 @@ cp -R "$APP" "$STAGE/"
 ln -s /Applications "$STAGE/Applications"   # drag-to-install shortcut
 hdiutil create -volname "KuNotes" -srcfolder "$STAGE" -ov -format UDZO "$DMG" >/dev/null
 
+# The updater's package: the app alone. `ditto` keeps the bundle's symlinks and
+# signature intact; the name has no version, so the app can find it in any release.
+case "$(uname -m)" in
+  arm64) ZIP_ARCH=arm64 ;;
+  *) ZIP_ARCH=x64 ;;
+esac
+ZIP="$OUT/KuNotes-macos-$ZIP_ARCH.zip"
+rm -f "$ZIP"
+ditto -c -k --keepParent "$APP" "$ZIP"
+
 echo "Built $APP"
 echo "Built $DMG"
+echo "Built $ZIP"
