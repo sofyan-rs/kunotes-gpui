@@ -414,3 +414,16 @@ fn clicking_empty_space_clears_the_selection(cx: &mut TestAppContext) {
     });
     assert_eq!(selected(&s, cx), None);
 }
+
+#[gpui_kit::test]
+fn collapse_folders_button_closes_every_folder(cx: &mut TestAppContext) {
+    let s = setup(cx);
+    let projects = s.path("Projects");
+    in_window(&s, cx, |window, cx| {
+        window.double_click(row_id(&projects), cx)
+    });
+    assert!(is_expanded(&s, cx, &projects));
+
+    in_window(&s, cx, |window, cx| window.click("collapse-folders", cx));
+    assert!(!is_expanded(&s, cx, &projects));
+}

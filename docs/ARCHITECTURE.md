@@ -291,9 +291,11 @@ The header icon bar, left to right:
 | folder | Open vault… | `secondary-o` | – |
 | square-pen | New file in vault root | `secondary-n` | no vault |
 | folder-plus | New folder in vault root | `secondary-shift-n` | no vault |
-| trash | Delete selection (confirm) | `backspace` / `delete` / `secondary-backspace` *(FileTree context only)* | nothing selected |
+| copy-minus | Collapse Folders (close every folder, like VS Code) | – | no vault |
 | *(spacer)* | | | |
 | search | Quick switcher | `secondary-k`, `secondary-shift-o` | no vault |
+
+Deleting is in the tree's right-click menu, the File menu, and `backspace` / `delete` / `secondary-backspace` *(FileTree context only)*.
 
 The body shows `FileTree` when a vault is open. Otherwise it shows "No Vault Open" and an "Open Vault…" button.
 

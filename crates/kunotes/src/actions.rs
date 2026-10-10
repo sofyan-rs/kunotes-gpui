@@ -25,6 +25,7 @@ actions!(
         CycleViewMode,
         QuickSwitcher,
         LockNotes,
+        CollapseFolders,
         About,
         Quit,
     ]

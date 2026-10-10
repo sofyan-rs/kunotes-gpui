@@ -16,6 +16,7 @@ gpui_kit::assets::icon_assets!(
         CloudOff,
         Code,
         Columns2,
+        CopyMinus,
         Eye,
         FolderPlus,
         GitBranch,

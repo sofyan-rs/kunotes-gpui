@@ -230,6 +230,14 @@ impl VaultStore {
         }
     }
 
+    /// Closes every folder in the tree (the sidebar's Collapse Folders button).
+    pub fn collapse_all(&mut self, cx: &mut Context<Self>) {
+        if !self.expanded.is_empty() {
+            self.expanded.clear();
+            cx.notify();
+        }
+    }
+
     pub fn set_expanded(&mut self, folder: PathBuf, expanded: bool, cx: &mut Context<Self>) {
         if expanded {
             self.expanded.insert(folder);

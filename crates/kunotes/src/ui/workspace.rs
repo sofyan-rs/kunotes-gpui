@@ -11,9 +11,9 @@ use kunotes_core::settings::ViewMode;
 
 use crate::actions::{
     About, CloseAllTabs, CloseOtherTabs, CloseSavedTabs, CloseTab, CloseTabsToTheRight, CloseVault,
-    CycleViewMode, DeleteSelection, LockNotes, NewFile, NewFolder, NextTab, OpenVault, PreviousTab,
-    QuickSwitcher, RenameSelection, ToggleNoteLock, TogglePinTab, ToggleSidebar, ViewLive,
-    ViewPreview, ViewSource, ViewSplit, WORKSPACE,
+    CollapseFolders, CycleViewMode, DeleteSelection, LockNotes, NewFile, NewFolder, NextTab,
+    OpenVault, PreviousTab, QuickSwitcher, RenameSelection, ToggleNoteLock, TogglePinTab,
+    ToggleSidebar, ViewLive, ViewPreview, ViewSource, ViewSplit, WORKSPACE,
 };
 use crate::git_sync::{GitSync, GitSyncEvent};
 use crate::settings_store::SettingsStore;
@@ -286,6 +286,10 @@ impl Workspace {
         }
     }
 
+    fn collapse_folders(&mut self, _: &CollapseFolders, _: &mut Window, cx: &mut Context<Self>) {
+        self.vault.update(cx, |vault, cx| vault.collapse_all(cx));
+    }
+
     fn lock_notes(&mut self, _: &LockNotes, _: &mut Window, cx: &mut Context<Self>) {
         self.vault_lock.update(cx, |lock, cx| lock.lock_now(cx));
     }
@@ -365,6 +369,7 @@ impl Render for Workspace {
             // `cx.listener` turns a method into a callback that gets `&mut self`.
             .on_action(cx.listener(Self::open_vault))
             .on_action(cx.listener(Self::lock_notes))
+            .on_action(cx.listener(Self::collapse_folders))
             .on_action(cx.listener(Self::toggle_note_lock))
             .on_action(cx.listener(Self::about))
             .on_action(cx.listener(Self::close_vault))

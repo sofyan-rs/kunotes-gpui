@@ -21,7 +21,7 @@ use gpui_kit::{
     Window, div, prelude::FluentBuilder as _,
 };
 
-use crate::actions::{DeleteSelection, NewFile, NewFolder, OpenVault, QuickSwitcher, WORKSPACE};
+use crate::actions::{CollapseFolders, NewFile, NewFolder, OpenVault, QuickSwitcher, WORKSPACE};
 use crate::git_sync::GitSync;
 use crate::vault_store::VaultStore;
 use file_tree::FileTree;
@@ -67,7 +67,6 @@ impl Sidebar {
     }
 
     fn render_header(&self, has_vault: bool, cx: &mut Context<Self>) -> impl IntoElement {
-        let has_selection = self.vault.read(cx).selected_path().is_some();
         h_flex()
             .px_2()
             .py_1()
@@ -96,11 +95,11 @@ impl Sidebar {
                 has_vault,
             ))
             .child(header_button(
-                "delete",
-                IconName::Trash,
-                "Move to Trash",
-                &DeleteSelection,
-                has_selection,
+                "collapse-folders",
+                IconName::CopyMinus,
+                "Collapse Folders",
+                &CollapseFolders,
+                has_vault,
             ))
             .child(div().flex_1())
             .child(header_button(
