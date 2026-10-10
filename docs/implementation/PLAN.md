@@ -192,7 +192,7 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done
 - [x] Release workflow: the tag must match the `Cargo.toml` version; fixed updater asset names (`KuNotes-macos-arm64.zip`, `KuNotes-windows-x64.zip`, `KuNotes-fedora-x86_64.rpm`) + `SHA256SUMS`.
 - [x] In-app updates (ARCHITECTURE §6.13): check GitHub Releases at launch and via *Check for Updates…*, download with `curl`, verify SHA-256, swap the app (macOS `.app`, Windows exe) or `pkexec dnf install` (Fedora), then restart via `cx.restart()`. 6 unit + 4 filesystem tests; macOS bundle swap verified locally with a real `bundle.sh` zip.
 - [ ] Publish the first release (`v0.1.0`) and try a real update end to end on each OS (needs a second release, e.g. `v0.1.1`).
-- [ ] Root `README.md` with screenshots from each OS.
+- [ ] Root `README.md` with screenshots from each OS. (macOS done in `ss/`: Live, Split, a locked note; taken from a copy of `fixtures/sample-vault` with a temp `KUNOTES_CONFIG_DIR`. Windows and Fedora still to do.)
 
 ## Post-v1 polish (done)
 
@@ -257,6 +257,7 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done
 - [x] `VaultLock`: unlock/set password in the background, auto-lock after 5 min, lock now (`secondary-shift-l`), forget on vault switch.
 - [x] Editor: lock screen, encrypted autosave, editors rebuilt empty on lock. Tree/tab lock icons, *Lock Note* / *Remove Lock* menu, header lock button.
 - [x] Password dialog (set twice with warning / unlock, wrong password message). UI test.
+- [x] *File → Change Notes Password…*: rewrites only the key file (`lock::change_password`), locked notes untouched. Filesystem test + UI test.
 - [ ] Manual check: lock a note in a git-synced vault and open it on a second computer.
 
 ## Feature checklist

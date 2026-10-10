@@ -4,7 +4,25 @@ A minimal, cross-platform markdown vault app, in the style of Obsidian but witho
 
 Open any folder on disk as a "vault", browse it in a sidebar, and edit markdown files directly. Files on disk are the only source of truth, so there is no database or lock-in. Optionally, a vault can sync through your own git repository.
 
-> **Status:** planning. See [docs/implementation/PLAN.md](docs/implementation/PLAN.md).
+![KuNotes on macOS: a note in Live mode](ss/ss-1.png)
+
+![Split mode: highlighted source next to the rendered preview](ss/ss-2.png)
+
+![A locked note: encrypted on disk until the vault password is entered](ss/ss-3.png)
+
+> **Status:** early releases (v0.1). See [docs/implementation/PLAN.md](docs/implementation/PLAN.md) for what's done and what's next.
+
+## Download
+
+Get the latest version from [Releases](https://github.com/sofyan-rs/kunotes-gpui/releases/latest):
+
+| System | File |
+|---|---|
+| macOS (Apple Silicon) | `KuNotes-<version>-arm64.dmg`: open it and drag KuNotes to Applications. The app isn't notarized yet, so the first time, right-click it → *Open*. |
+| Windows 10+ (x64) | `KuNotes-windows-x64.zip`: unzip and run `KuNotes.exe`. |
+| Fedora (x86_64) | `KuNotes-fedora-x86_64.rpm`: `sudo dnf install ./KuNotes-fedora-x86_64.rpm` |
+
+KuNotes checks for a new release at launch and from *KuNotes → Check for Updates…*, then downloads, verifies, and installs it in place.
 
 ## Features
 
@@ -22,8 +40,9 @@ Open any folder on disk as a "vault", browse it in a sidebar, and edit markdown 
 - **Tabs** like VS Code: preview tabs, pin, close others/to the right/saved/all, drag to reorder, copy path, reveal in file manager; reopened on launch.
 - **Quick switcher** (`Ctrl/⌘+K`): filter all notes by name and open one from the keyboard.
 - **Live external sync:** changes made outside the app show up automatically.
-- **Locked notes:** right-click a note → *Lock Note* to encrypt it (for credentials). One password per vault; notes lock again after 5 minutes. Encrypted with [age](https://age-encryption.org), so they also open with the `age` tool: `age -d .kunotes-lock.age > key.txt`, then `age -d -i key.txt "Note.md.age"`.
+- **Locked notes:** right-click a note → *Lock Note* to encrypt it (for credentials). One password per vault (change it from *File → Change Notes Password…*); notes lock again after 5 minutes. Encrypted with [age](https://age-encryption.org), so they also open with the `age` tool: `age -d .kunotes-lock.age > key.txt`, then `age -d -i key.txt "Note.md.age"`.
 - **Git sync (optional):** enter a repository address (e.g. on GitHub) and the vault syncs automatically. Uses the git installed on your computer and its sign-in; a note changed on two computers keeps both versions.
+- **Updates itself** from GitHub Releases: download, SHA-256 check, install, restart. The launch check can be turned off with `"check_for_updates": false` in the settings file.
 - **Remembers your last vault** across launches.
 
 ## Requirements
