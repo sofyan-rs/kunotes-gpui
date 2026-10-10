@@ -14,6 +14,7 @@ pub mod live;
 pub mod live_buffer;
 pub mod live_table;
 pub mod live_view;
+pub mod lock;
 pub mod names;
 pub mod node;
 pub mod paths;

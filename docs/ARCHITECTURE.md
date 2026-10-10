@@ -66,6 +66,7 @@ kunotes-gpui/
 │   │   │   ├── search.rs      # flatten files, quick-switcher filter, tree visible rows
 │   │   │   ├── fs_ops.rs      # create / rename / move / trash, atomic_write, unique names
 │   │   │   ├── git.rs         # git sync: connect, sync, conflict copies (runs `git`)
+│   │   │   ├── lock.rs        # locked notes: vault password/key, encrypt, lock/unlock
 │   │   │   ├── names.rs       # filename validation (cross-platform rules)
 │   │   │   ├── paths.rs       # relative path, breadcrumb, note title, remap after rename
 │   │   │   ├── format.rs      # formatter-bar transforms (bold, link, heading, ...)
@@ -460,6 +461,21 @@ Optional, per vault. The user enters a repository address (e.g. `https://github.
 
 ---
 
+### 6.12 Locked notes (`kunotes-core/src/lock.rs`, `vault_lock.rs`, `ui/editor/locked.rs`, `ui/note_lock.rs`, `ui/unlock_dialog.rs`)
+
+For notes holding credentials: the note is **encrypted on disk**, so it's unreadable in the vault folder and in its git remote.
+
+- **Format:** a locked note is `Name.md.age`, ASCII-armored [age](https://age-encryption.org) (the `age` crate). It shows in the tree and tabs as `Name.md` with a lock icon; `node::is_markdown` and `paths::note_title` treat `.md.age` as a note, rename keeps the double extension, and git conflict copies become `Name (conflict DATE).md.age`.
+- **One password per vault, protecting a vault key:** `.kunotes-lock.age` at the vault root holds a random age X25519 identity, encrypted with the password (age's scrypt passphrase recipient, ~1 s on purpose). Notes are encrypted to that key, so after one unlock, opening and saving locked notes is fast. The key file is hidden from the tree but synced by git (another computer needs it). Setting the password asks twice, needs ≥ 8 characters, and warns that it can't be recovered.
+- **Without KuNotes:** `age -d .kunotes-lock.age > key.txt` (asks the password), then `age -d -i key.txt "Name.md.age"`.
+- **`VaultLock`** (owned by `Workspace`) holds the key in memory only while unlocked. It forgets it after 5 minutes without using a locked note (typing touches it), on `secondary-shift-l` / *Lock Notes Now* / the header's lock button, when another vault opens, and when the app quits.
+- **In the editor** (`Secret`: `No` / `Hidden` / `Shown`): a locked note opens hidden (lock screen with *Unlock…*) or, if unlocked, decrypted. Saving a shown note encrypts it (`lock::write_note` → `atomic_write`); a hidden one never saves. When the vault locks, a shown note saves with its own copy of the key, then its editors and preview are **rebuilt empty**, dropping the text and its undo history.
+- **Lock / Remove Lock** (tree menu, `ToggleNoteLock`): asks for the password if needed, saves open notes, writes the other form (`lock_note` checks the encrypted copy opens before anything else happens), then `VaultStore::replace_note` moves the tab to the new path and the old file to the OS trash. The notification reminds that the old plain copy is in the trash and older versions may remain in git history.
+- Limits: plaintext is in memory while shown (not zeroized); file names aren't encrypted.
+- Tests: `kunotes-core/tests/lock.rs` (password, round trip, wrong password, other vault's key), `ui/note_lock_tests.rs` (lock an open note, encrypted autosave, lock hides the text, unlock restores it).
+
+---
+
 ## 7. Data integrity
 
 ### 7.1 Save pipeline (`ui/editor/mod.rs`)
@@ -572,6 +588,7 @@ A Wayland or X11 session with a working Vulkan driver (`vulkan-loader` plus Mesa
 | Tabs | Several notes open; preview tabs; pin, close variants, drag to reorder, copy path, reveal; restored on launch | §6.10 |
 | Live sync | Changes made outside the app appear in the tree | §7.2 |
 | Git sync | Optional: sync the vault with the user's git remote (auto + manual), conflicts kept as copies | §6.11 |
+| Locked notes | Encrypt notes with credentials (age, one vault password), auto-lock after 5 min | §6.12 |
 | Layout | Resizable, toggleable sidebar; view mode and sidebar width remembered | §5, §4.3 |
 
 ---

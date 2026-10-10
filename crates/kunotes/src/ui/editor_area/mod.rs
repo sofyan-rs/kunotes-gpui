@@ -27,6 +27,7 @@ use kunotes_core::tabs::TabList;
 use crate::settings_store::SettingsStore;
 use crate::ui::editor::{EditorEvent, EditorPane, load_note};
 use crate::ui::empty_state;
+use crate::vault_lock::VaultLock;
 use crate::vault_store::{VaultEvent, VaultStore};
 
 /// Something other parts of the window react to.
@@ -37,6 +38,8 @@ pub enum EditorAreaEvent {
 
 pub struct EditorArea {
     vault: Entity<VaultStore>,
+    /// Unlocks locked notes; each pane watches it.
+    vault_lock: Entity<VaultLock>,
     tabs: TabList,
     /// The editor of each open tab that has been shown at least once, by path.
     panes: HashMap<PathBuf, Entity<EditorPane>>,
@@ -52,7 +55,12 @@ pub struct EditorArea {
 impl EventEmitter<EditorAreaEvent> for EditorArea {}
 
 impl EditorArea {
-    pub fn new(vault: Entity<VaultStore>, window: &mut Window, cx: &mut Context<Self>) -> Self {
+    pub fn new(
+        vault: Entity<VaultStore>,
+        vault_lock: Entity<VaultLock>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Self {
         let subscriptions = vec![
             cx.observe_in(&vault, window, |area, _, window, cx| {
                 area.sync_with_vault(window, cx);
@@ -68,6 +76,7 @@ impl EditorArea {
         ];
         EditorArea {
             vault,
+            vault_lock,
             tabs: TabList::default(),
             panes: HashMap::new(),
             pane_subscriptions: HashMap::new(),
@@ -243,7 +252,8 @@ impl EditorArea {
         let Some(root) = self.root.clone() else {
             return;
         };
-        let note = match load_note(path.to_path_buf()) {
+        let key = self.vault_lock.read(cx).key();
+        let note = match load_note(path.to_path_buf(), key.as_deref()) {
             Ok(note) => note,
             Err(message) => {
                 window.push_notification(message, cx);
@@ -253,7 +263,8 @@ impl EditorArea {
                 return;
             }
         };
-        let pane = cx.new(|cx| EditorPane::new(note, root, window, cx));
+        let vault_lock = self.vault_lock.clone();
+        let pane = cx.new(|cx| EditorPane::new(note, root, vault_lock, window, cx));
         if pane.read(cx).is_read_only() {
             window.push_notification(
                 "This file isn't valid UTF-8, so it opened read-only to avoid damaging it.",

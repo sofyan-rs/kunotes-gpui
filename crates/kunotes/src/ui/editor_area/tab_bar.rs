@@ -209,9 +209,14 @@ fn render_tab(
         .when(is_active, |tab| tab.bg(active_bg))
         .when(!is_active, |tab| tab.hover(move |style| style.bg(hover_bg)))
         .child(
-            Icon::new(IconName::FileText)
-                .xsmall()
-                .text_color(theme.muted_foreground),
+            // A locked note's tab shows a lock, like its row in the tree.
+            Icon::new(if kunotes_core::lock::is_locked_note(&path) {
+                IconName::Lock
+            } else {
+                IconName::FileText
+            })
+            .xsmall()
+            .text_color(theme.muted_foreground),
         )
         .child(
             div()

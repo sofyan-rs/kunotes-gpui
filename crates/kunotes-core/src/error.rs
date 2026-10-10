@@ -30,6 +30,10 @@ pub enum CoreError {
     #[error("\"{0}\" isn't an image (use PNG, JPEG, GIF, WebP, SVG or BMP)")]
     NotAnImage(String),
 
+    /// Locking, unlocking, or the vault password; the text says why.
+    #[error("{0}")]
+    Lock(String),
+
     /// A git sync step failed; the text says why.
     #[error("{0}")]
     Git(String),

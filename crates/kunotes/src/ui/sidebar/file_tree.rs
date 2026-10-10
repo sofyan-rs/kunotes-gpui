@@ -226,6 +226,10 @@ impl FileTree {
         let (icon, icon_color) = match (row.is_dir, row.is_expanded) {
             (true, true) => (IconName::FolderOpen, theme.blue),
             (true, false) => (IconName::Folder, theme.blue),
+            // A locked note (encrypted, `.md.age`) gets a lock instead of a page.
+            (false, _) if kunotes_core::lock::is_locked_note(&row.path) => {
+                (IconName::Lock, theme.muted_foreground)
+            }
             (false, _) => (IconName::FileText, theme.muted_foreground),
         };
         let chevron = row.is_dir.then(|| {
@@ -263,7 +267,7 @@ impl FileTree {
                 .overflow_hidden()
                 .whitespace_nowrap()
                 .text_ellipsis()
-                .child(row.name.clone())
+                .child(display_name(&row))
                 .into_any_element()
         };
         let label: AnyElement = if renaming {
@@ -447,4 +451,14 @@ pub fn icon_id(path: &Path) -> ElementId {
 
 fn item_id(path: &Path) -> ElementId {
     ElementId::Name(format!("item:{}", path.display()).into())
+}
+
+/// The name shown for a row: locked notes hide the `.age` (the lock icon says it).
+fn display_name(row: &VisibleRow) -> String {
+    if kunotes_core::lock::is_locked_note(&row.path) {
+        let name = &row.name;
+        name[..name.len() - ".age".len()].to_string()
+    } else {
+        row.name.clone()
+    }
 }

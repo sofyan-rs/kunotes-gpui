@@ -11,6 +11,7 @@ mod git_sync;
 mod platform;
 mod settings_store;
 mod ui;
+mod vault_lock;
 mod vault_store;
 #[cfg(test)]
 mod vault_store_tests;

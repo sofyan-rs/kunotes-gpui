@@ -27,6 +27,8 @@ opener = { version = "0.9", features = ["reveal"] }
 notify = "8"
 notify-debouncer-full = "0.6"
 futures = "0.3"
+# Locked notes: the age encryption format (https://age-encryption.org).
+age = { version = "0.12", features = ["armor"] }
 
 # Framework crates are optimized even in debug builds so the app stays responsive.
 [profile.dev.package]
@@ -35,6 +37,8 @@ gpui-component = { opt-level = 3 }
 gpui-kit = { opt-level = 3 }
 gpui-kit-assets = { opt-level = 3 }
 gpui-pre-macros = { opt-level = 3 }
+# scrypt (unlocking the vault key) is very slow unoptimized.
+scrypt = { opt-level = 3 }
 gpui-pre-platform = { opt-level = 3 }
 rustybuzz = { opt-level = 3 }
 taffy = { opt-level = 3 }

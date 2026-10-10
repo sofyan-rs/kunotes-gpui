@@ -32,10 +32,12 @@ impl VaultNode {
     }
 }
 
-/// Returns true if `path` has a `.md` extension (in any letter case).
+/// Returns true if `path` is a note: a `.md` file, or a locked note
+/// (`.md.age`, see `lock.rs`). Any letter case.
 pub fn is_markdown(path: &Path) -> bool {
     path.extension()
         .is_some_and(|ext| ext.eq_ignore_ascii_case("md"))
+        || crate::lock::is_locked_note(path)
 }
 
 fn scan_children(dir: &Path) -> Vec<VaultNode> {

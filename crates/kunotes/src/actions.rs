@@ -24,9 +24,18 @@ actions!(
         ViewPreview,
         CycleViewMode,
         QuickSwitcher,
+        LockNotes,
+        About,
         Quit,
     ]
 );
+
+/// Locks a note (encrypts it) or removes its lock. Sent by the file tree's menu.
+#[derive(Clone, PartialEq, Debug, gpui_kit::Action)]
+#[action(namespace = kunotes, no_json)]
+pub struct ToggleNoteLock {
+    pub path: std::path::PathBuf,
+}
 
 // Tabs. Handled by the workspace, so they work wherever the focus is.
 actions!(
@@ -88,6 +97,7 @@ pub fn bind_keys(cx: &mut App) {
         KeyBinding::new("ctrl-tab", NextTab, Some(WORKSPACE)),
         KeyBinding::new("ctrl-shift-tab", PreviousTab, Some(WORKSPACE)),
         KeyBinding::new("secondary-shift-o", QuickSwitcher, Some(WORKSPACE)),
+        KeyBinding::new("secondary-shift-l", LockNotes, Some(WORKSPACE)),
         KeyBinding::new("secondary-1", ViewLive, Some(WORKSPACE)),
         KeyBinding::new("secondary-2", ViewSource, Some(WORKSPACE)),
         KeyBinding::new("secondary-3", ViewSplit, Some(WORKSPACE)),
@@ -120,7 +130,11 @@ pub fn bind_keys(cx: &mut App) {
 /// Linux the same list is drawn inside the title bar.
 pub fn app_menus() -> Vec<Menu> {
     vec![
-        Menu::new("KuNotes").items([MenuItem::action("Quit KuNotes", Quit)]),
+        Menu::new("KuNotes").items([
+            MenuItem::action("About KuNotes", About),
+            MenuItem::separator(),
+            MenuItem::action("Quit KuNotes", Quit),
+        ]),
         Menu::new("File").items([
             MenuItem::action("Open Vault…", OpenVault),
             MenuItem::action("Quick Open…", QuickSwitcher),
@@ -130,6 +144,8 @@ pub fn app_menus() -> Vec<Menu> {
             MenuItem::separator(),
             MenuItem::action("Rename…", RenameSelection),
             MenuItem::action("Move to Trash", DeleteSelection),
+            MenuItem::separator(),
+            MenuItem::action("Lock Notes Now", LockNotes),
             MenuItem::separator(),
             MenuItem::action("Close Tab", CloseTab),
             MenuItem::action("Close All Tabs", CloseAllTabs),

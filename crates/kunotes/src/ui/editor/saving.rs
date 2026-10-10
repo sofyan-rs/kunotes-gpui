@@ -6,7 +6,9 @@
 use gpui_kit::{AppContext as _, Context, SharedString, Window};
 use kunotes_core::cursor;
 use kunotes_core::fs_ops::atomic_write;
+use kunotes_core::lock;
 
+use super::locked::Secret;
 use super::{EditorEvent, EditorPane, PREVIEW_DELAY, SAVE_DELAY};
 use crate::actions::SaveNow;
 
@@ -15,6 +17,10 @@ impl EditorPane {
 
     pub(super) fn on_text_changed(&mut self, cx: &mut Context<Self>) {
         self.dirty = true;
+        if self.secret == Secret::Shown {
+            // Typing in a locked note keeps the vault unlocked a while longer.
+            self.vault_lock.update(cx, |lock, _| lock.touch());
+        }
         self.schedule_save(cx);
         self.schedule_refresh(cx);
         cx.emit(EditorEvent::Edited);
@@ -39,7 +45,13 @@ impl EditorPane {
         }
         let text = self.text(cx);
         let contents = self.line_ending.apply(&text);
-        match atomic_write(&self.path, contents.as_bytes()) {
+        let result = match (self.secret, &self.key) {
+            (Secret::No, _) => atomic_write(&self.path, contents.as_bytes()),
+            // A locked note is saved encrypted, never as plain text.
+            (Secret::Shown, Some(key)) => lock::write_note(key, &self.path, &contents),
+            (Secret::Shown, None) | (Secret::Hidden, _) => return,
+        };
+        match result {
             Ok(()) => self.dirty = false,
             Err(error) => cx.emit(EditorEvent::Error(format!("Couldn't save: {error}"))),
         }

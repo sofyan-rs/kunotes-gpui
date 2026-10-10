@@ -336,6 +336,20 @@ impl VaultStore {
         }
     }
 
+    /// `new` replaces `old` (a note was locked or unlocked): its tab and
+    /// selection follow, then `old` goes to the OS trash.
+    pub fn replace_note(&mut self, old: &Path, new: &Path, cx: &mut Context<Self>) {
+        self.remap(old, new);
+        if let Err(error) = trash_file(old) {
+            cx.emit(VaultEvent::Error(format!(
+                "The note was saved as “{}”, but the old copy couldn't be moved to the trash: {error}",
+                new.file_name().unwrap_or_default().to_string_lossy()
+            )));
+        }
+        self.refresh(cx);
+        cx.notify();
+    }
+
     /// Moves a file or folder to the OS trash.
     pub fn trash(&mut self, path: &Path, cx: &mut Context<Self>) {
         if let Err(error) = fs_ops::trash(path) {
@@ -372,5 +386,18 @@ impl VaultStore {
             .drain()
             .map(|folder| remap_path(&folder, old, new).unwrap_or(folder))
             .collect();
+    }
+}
+
+/// Moves a file to the OS trash. UI tests run where the OS trash can't be used
+/// (macOS asks the Finder), so there it deletes the file in the temporary test vault.
+fn trash_file(path: &Path) -> kunotes_core::Result<()> {
+    #[cfg(test)]
+    {
+        Ok(std::fs::remove_file(path)?)
+    }
+    #[cfg(not(test))]
+    {
+        fs_ops::trash(path)
     }
 }

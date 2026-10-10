@@ -155,13 +155,24 @@ pub fn commit_and_push_quickly(root: &Path, timeout: Duration) -> Result<()> {
 /// `Plan.md` becomes `Plan (conflict 2026-10-09).md`.
 pub fn conflict_copy_path(path: &Path, date: &str) -> PathBuf {
     let dir = path.parent().unwrap_or(Path::new(""));
-    let stem = path
-        .file_stem()
-        .map(|stem| stem.to_string_lossy().into_owned())
+    let name = path
+        .file_name()
+        .map(|name| name.to_string_lossy().into_owned())
         .unwrap_or_default();
-    let extension = path
-        .extension()
-        .map(|ext| ext.to_string_lossy().into_owned());
+    // A locked note keeps both extensions: `Keys (conflict …).md.age`.
+    let (stem, extension) = if crate::lock::is_locked_note(path) {
+        let stem = name[..name.len() - ".md.age".len()].to_string();
+        (stem, Some("md.age".to_string()))
+    } else {
+        let stem = path
+            .file_stem()
+            .map(|stem| stem.to_string_lossy().into_owned())
+            .unwrap_or_default();
+        let extension = path
+            .extension()
+            .map(|ext| ext.to_string_lossy().into_owned());
+        (stem, extension)
+    };
     unique_path(
         dir,
         &format!("{stem} (conflict {date})"),
@@ -470,6 +481,10 @@ mod tests {
             Path::new("vault")
                 .join("Projects")
                 .join("Plan (conflict 2026-10-09).md")
+        );
+        assert_eq!(
+            conflict_copy_path(Path::new("Keys.md.age"), "2026-10-09"),
+            Path::new("Keys (conflict 2026-10-09).md.age")
         );
     }
 

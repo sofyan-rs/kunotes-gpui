@@ -19,13 +19,20 @@ pub fn relative_path(root: &Path, path: &Path) -> Option<String> {
 /// The display title of a note: the file name without a `.md` extension.
 /// Folders and other files keep their full name.
 pub fn note_title(path: &Path) -> String {
-    let name = if is_markdown(path) {
-        path.file_stem()
+    let name = path
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_default();
+    if !is_markdown(path) {
+        return name;
+    }
+    // `Plan.md` → "Plan", and a locked `Keys.md.age` → "Keys".
+    let suffix = if crate::lock::is_locked_note(path) {
+        ".md.age"
     } else {
-        path.file_name()
+        ".md"
     };
-    name.map(|n| n.to_string_lossy().into_owned())
-        .unwrap_or_default()
+    name[..name.len() - suffix.len()].to_string()
 }
 
 /// Breadcrumb parts for a file, relative to the vault root.
@@ -51,8 +58,12 @@ pub fn breadcrumb(root: &Path, file: &Path) -> Vec<String> {
 /// extension for notes (so typing replaces "Plan" in "Plan.md"), the whole name
 /// for folders. A byte range into `name`.
 pub fn rename_selection(name: &str, is_dir: bool) -> std::ops::Range<usize> {
-    let has_md = name.len() > 3 && name.to_lowercase().ends_with(".md");
-    if !is_dir && has_md {
+    let lower = name.to_lowercase();
+    let has_md = name.len() > 3 && lower.ends_with(".md");
+    let has_locked = name.len() > 7 && lower.ends_with(".md.age");
+    if !is_dir && has_locked {
+        0..name.len() - 7
+    } else if !is_dir && has_md {
         0..name.len() - 3
     } else {
         0..name.len()
@@ -154,6 +165,7 @@ mod tests {
     #[test]
     fn note_title_strips_only_markdown_extension() {
         assert_eq!(note_title(Path::new("a/Plan.md")), "Plan");
+        assert_eq!(note_title(Path::new("a/Keys.md.age")), "Keys");
         assert_eq!(note_title(Path::new("a/Shout.MD")), "Shout");
         assert_eq!(note_title(Path::new("a/v1.2")), "v1.2");
         assert_eq!(note_title(Path::new("a/Folder")), "Folder");
@@ -228,6 +240,7 @@ mod tests {
             "folders: whole name"
         );
         assert_eq!(rename_selection(".md", false), 0..3);
+        assert_eq!(rename_selection("Keys.md.age", false), 0..4);
         assert_eq!(rename_selection("日本.md", false), 0..6);
     }
 

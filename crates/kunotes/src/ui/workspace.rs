@@ -10,15 +10,16 @@ use gpui_kit::{
 use kunotes_core::settings::ViewMode;
 
 use crate::actions::{
-    CloseAllTabs, CloseOtherTabs, CloseSavedTabs, CloseTab, CloseTabsToTheRight, CloseVault,
-    CycleViewMode, DeleteSelection, NewFile, NewFolder, NextTab, OpenVault, PreviousTab,
-    QuickSwitcher, RenameSelection, TogglePinTab, ToggleSidebar, ViewLive, ViewPreview, ViewSource,
-    ViewSplit, WORKSPACE,
+    About, CloseAllTabs, CloseOtherTabs, CloseSavedTabs, CloseTab, CloseTabsToTheRight, CloseVault,
+    CycleViewMode, DeleteSelection, LockNotes, NewFile, NewFolder, NextTab, OpenVault, PreviousTab,
+    QuickSwitcher, RenameSelection, ToggleNoteLock, TogglePinTab, ToggleSidebar, ViewLive,
+    ViewPreview, ViewSource, ViewSplit, WORKSPACE,
 };
 use crate::git_sync::{GitSync, GitSyncEvent};
 use crate::settings_store::SettingsStore;
 use crate::ui::editor_area::EditorArea;
-use crate::ui::{dialogs, quick_switcher, sidebar::Sidebar, title_bar};
+use crate::ui::{dialogs, note_lock, quick_switcher, sidebar::Sidebar, title_bar};
+use crate::vault_lock::VaultLock;
 use crate::vault_store::{VaultEvent, VaultStore};
 
 const SIDEBAR_DEFAULT_WIDTH: f32 = 250.;
@@ -32,6 +33,8 @@ pub struct Workspace {
     editor_area: Entity<EditorArea>,
     /// Keeps the vault in step with a git remote, if set up.
     git_sync: Entity<GitSync>,
+    /// Whether locked notes are unlocked (holds the vault key while they are).
+    vault_lock: Entity<VaultLock>,
     focus_handle: FocusHandle,
     /// Kept alive so our listeners keep working; dropping one unsubscribes it.
     _subscriptions: Vec<Subscription>,
@@ -47,7 +50,9 @@ impl Workspace {
             vault.disable_live_sync();
             vault
         });
-        let editor_area = cx.new(|cx| EditorArea::new(vault.clone(), window, cx));
+        let vault_lock = cx.new(|cx| VaultLock::new(vault.clone(), cx));
+        let editor_area =
+            cx.new(|cx| EditorArea::new(vault.clone(), vault_lock.clone(), window, cx));
         let git_sync = cx.new(|cx| GitSync::new(vault.clone(), editor_area.clone(), cx));
         let sidebar = cx.new(|cx| Sidebar::new(vault.clone(), git_sync.clone(), cx));
 
@@ -123,6 +128,7 @@ impl Workspace {
             sidebar,
             editor_area,
             git_sync,
+            vault_lock,
             focus_handle,
             _subscriptions: subscriptions,
         }
@@ -194,6 +200,12 @@ impl Workspace {
     #[cfg(test)]
     pub fn editor(&self, cx: &gpui_kit::App) -> Option<Entity<crate::ui::editor::EditorPane>> {
         self.editor_area.read(cx).active_pane().cloned()
+    }
+
+    /// The vault lock. For tests.
+    #[cfg(test)]
+    pub fn vault_lock(&self) -> Entity<VaultLock> {
+        self.vault_lock.clone()
     }
 
     /// The tabs view. For tests.
@@ -274,6 +286,30 @@ impl Workspace {
         }
     }
 
+    fn lock_notes(&mut self, _: &LockNotes, _: &mut Window, cx: &mut Context<Self>) {
+        self.vault_lock.update(cx, |lock, cx| lock.lock_now(cx));
+    }
+
+    fn toggle_note_lock(
+        &mut self,
+        action: &ToggleNoteLock,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        note_lock::toggle(
+            action.path.clone(),
+            self.vault.clone(),
+            self.vault_lock.clone(),
+            self.editor_area.clone(),
+            window,
+            cx,
+        );
+    }
+
+    fn about(&mut self, _: &About, window: &mut Window, cx: &mut Context<Self>) {
+        dialogs::about(window, cx);
+    }
+
     fn delete_selection(
         &mut self,
         _: &DeleteSelection,
@@ -328,6 +364,9 @@ impl Render for Workspace {
             .track_focus(&self.focus_handle)
             // `cx.listener` turns a method into a callback that gets `&mut self`.
             .on_action(cx.listener(Self::open_vault))
+            .on_action(cx.listener(Self::lock_notes))
+            .on_action(cx.listener(Self::toggle_note_lock))
+            .on_action(cx.listener(Self::about))
             .on_action(cx.listener(Self::close_vault))
             .on_action(cx.listener(Self::new_file))
             .on_action(cx.listener(Self::new_folder))

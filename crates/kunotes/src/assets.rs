@@ -28,6 +28,8 @@ gpui_kit::assets::icon_assets!(
         List,
         ListOrdered,
         ListTodo,
+        Lock,
+        LockOpen,
         NotebookPen,
         PenLine,
         Pin,

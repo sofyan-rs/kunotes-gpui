@@ -8,12 +8,14 @@
 //! A new pane is created for every note that gets opened, so nothing from the
 //! previous note (cursor, unsaved state) can leak into the next one.
 
+mod drawing;
 mod edit_menu;
 #[cfg(test)]
 mod editor_tests;
 mod formatter_bar;
 mod formatting;
 mod live;
+mod locked;
 mod markdown_style;
 mod preview;
 mod saving;
@@ -23,28 +25,26 @@ mod view_mode_switch;
 use std::fs;
 use std::ops::Range;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use std::time::Duration;
 
-use gpui_kit::assets::IconName;
-use gpui_kit::component::input::{Editor, EditorState, InputEvent};
-use gpui_kit::component::menu::ContextMenuExt as _;
-use gpui_kit::component::resizable::{h_resizable, resizable_panel};
+use gpui_kit::component::input::{EditorState, InputEvent};
 use gpui_kit::component::text::TextViewState;
-use gpui_kit::component::{ActiveTheme as _, Icon, Sizable as _, h_flex, v_flex};
 use gpui_kit::{
-    AnyElement, App, AppContext as _, Context, Entity, EventEmitter, Focusable as _,
-    InteractiveElement as _, IntoElement, ParentElement as _, Render, SharedString, Styled as _,
-    Subscription, Task, TestSupportExt as _, Window, div, prelude::FluentBuilder as _, px,
+    App, AppContext as _, Context, Entity, EventEmitter, Focusable as _, SharedString,
+    Subscription, Task, Window,
 };
+use kunotes_core::cursor;
 use kunotes_core::line_ending::{self, LineEnding};
+use kunotes_core::lock::{self, VaultKey};
 use kunotes_core::settings::ViewMode;
-use kunotes_core::{cursor, paths};
 
 use live::{LiveEditor, LiveEditorEvent};
+use locked::Secret;
 use markdown_style::highlighter_factory;
 
-use crate::actions::EDITOR;
 use crate::settings_store::SettingsStore;
+use crate::vault_lock::VaultLock;
 
 /// Save this long after the last keystroke.
 const SAVE_DELAY: Duration = Duration::from_millis(500);
@@ -85,6 +85,13 @@ pub struct EditorPane {
     refresh_again: bool,
     /// Counted in the background: counting a 1 MB note takes ~30 ms, too slow per keystroke.
     char_count: usize,
+    /// Is this a locked note, and is its text shown (see `locked.rs`)?
+    secret: Secret,
+    /// The vault key while a locked note is shown (to save it encrypted).
+    key: Option<Arc<VaultKey>>,
+    vault_lock: Entity<VaultLock>,
+    /// Listeners on the two editors; replaced when the editors are rebuilt.
+    editor_subscriptions: Vec<Subscription>,
     _subscriptions: Vec<Subscription>,
 }
 
@@ -97,10 +104,28 @@ pub struct LoadedNote {
     text: String,
     line_ending: LineEnding,
     can_save: bool,
+    secret: Secret,
 }
 
 /// Reads a note from disk. Notes are small, so this runs on the UI thread.
-pub fn load_note(path: PathBuf) -> Result<LoadedNote, String> {
+/// A locked note is decrypted with `key`; without one it opens hidden.
+pub fn load_note(path: PathBuf, key: Option<&VaultKey>) -> Result<LoadedNote, String> {
+    if lock::is_locked_note(&path) {
+        let (text, secret) = match key {
+            Some(key) => (
+                lock::read_note(key, &path).map_err(|error| error.to_string())?,
+                Secret::Shown,
+            ),
+            None => (String::new(), Secret::Hidden),
+        };
+        return Ok(LoadedNote {
+            line_ending: LineEnding::detect(&text),
+            text: line_ending::normalize(&text),
+            path,
+            can_save: true,
+            secret,
+        });
+    }
     let bytes = fs::read(&path).map_err(|error| format!("Couldn't open note: {error}"))?;
     let (text, can_save) = match String::from_utf8(bytes) {
         Ok(text) => (text, true),
@@ -115,6 +140,7 @@ pub fn load_note(path: PathBuf) -> Result<LoadedNote, String> {
         text: line_ending::normalize(&text),
         path,
         can_save,
+        secret: Secret::No,
     })
 }
 
@@ -122,6 +148,7 @@ impl EditorPane {
     pub fn new(
         note: LoadedNote,
         vault_root: PathBuf,
+        vault_lock: Entity<VaultLock>,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
@@ -130,11 +157,60 @@ impl EditorPane {
             text,
             line_ending,
             can_save,
+            secret,
         } = note;
 
         let live_active = uses_live(SettingsStore::get(cx).view_mode, true);
         let note_dir = path.parent().map(Path::to_path_buf).unwrap_or_default();
-        let live = cx.new(|cx| LiveEditor::new(&text, !can_save, note_dir, cx));
+        let (editor, live, editor_subscriptions) =
+            Self::build_editors(&text, can_save, note_dir, window, cx);
+
+        let subscriptions = vec![
+            // Switching between Live and Source hands the text to the other editor.
+            cx.observe_global_in::<SettingsStore>(window, |pane, window, cx| {
+                pane.sync_active_editor(window, cx)
+            }),
+            // The vault locked or unlocked: show or hide a locked note's text.
+            cx.observe_in(&vault_lock, window, |pane, _, window, cx| {
+                pane.sync_lock(window, cx)
+            }),
+        ];
+        let key = match secret {
+            Secret::Shown => vault_lock.read(cx).key(),
+            _ => None,
+        };
+
+        EditorPane {
+            path,
+            vault_root,
+            line_ending,
+            can_save,
+            dirty: false,
+            live_active,
+            save_task: None,
+            preview: cx.new(|cx| TextViewState::markdown(&text, cx)),
+            refresh_task: None,
+            refresh_again: false,
+            char_count: cursor::char_count(&text),
+            editor,
+            live,
+            secret,
+            key,
+            vault_lock,
+            editor_subscriptions,
+            _subscriptions: subscriptions,
+        }
+    }
+
+    /// Makes the Live and Source editors holding `text`, and their listeners.
+    fn build_editors(
+        text: &str,
+        can_save: bool,
+        note_dir: PathBuf,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> (Entity<EditorState>, Entity<LiveEditor>, Vec<Subscription>) {
+        let live = cx.new(|cx| LiveEditor::new(text, !can_save, note_dir, cx));
         let editor = cx.new(|cx| {
             let mut state = EditorState::new(window, cx)
                 .language("markdown")
@@ -142,7 +218,7 @@ impl EditorPane {
                 .folding(false) // code folding doesn't suit prose
                 .soft_wrap(true)
                 .placeholder("Start writing…")
-                .default_value(text.clone());
+                .default_value(text.to_string());
             // Our own markdown styling (see `markdown_style.rs`) instead of the built-in one.
             state.set_highlighter_factory(highlighter_factory(), cx);
             // Our own right-click menu replaces the built-in one (see `edit_menu.rs`).
@@ -162,28 +238,8 @@ impl EditorPane {
             // Cursor moves don't send an event, but they do notify; redraw the status bar.
             cx.observe(&editor, |_, _, cx| cx.notify()),
             cx.observe(&live, |_, _, cx| cx.notify()),
-            // Switching between Live and Source hands the text to the other editor.
-            cx.observe_global_in::<SettingsStore>(window, |pane, window, cx| {
-                pane.sync_active_editor(window, cx)
-            }),
         ];
-
-        EditorPane {
-            path,
-            vault_root,
-            line_ending,
-            can_save,
-            dirty: false,
-            live_active,
-            save_task: None,
-            preview: cx.new(|cx| TextViewState::markdown(&text, cx)),
-            refresh_task: None,
-            refresh_again: false,
-            char_count: cursor::char_count(&text),
-            editor,
-            live,
-            _subscriptions: subscriptions,
-        }
+        (editor, live, subscriptions)
     }
 
     /// The folder the note is in (relative image links start here).
@@ -282,7 +338,10 @@ impl EditorPane {
         if self.dirty {
             return;
         }
-        let note = match load_note(self.path.clone()) {
+        if self.secret == Secret::Hidden {
+            return; // nothing shown; it's decrypted fresh when unlocked
+        }
+        let note = match load_note(self.path.clone(), self.key.as_deref()) {
             Ok(note) => note,
             Err(error) => {
                 log::warn!("couldn't reload {}: {error}", self.path.display());
@@ -312,6 +371,7 @@ impl EditorPane {
     /// The note was renamed or moved on disk; keep editing it at its new path.
     pub fn set_path(&mut self, path: PathBuf, cx: &mut Context<Self>) {
         self.path = path;
+        self.follow_lock_change(cx);
         let note_dir = self.note_dir();
         self.live
             .update(cx, |live, cx| live.set_note_dir(note_dir, cx));
@@ -354,109 +414,6 @@ impl EditorPane {
             self.focus(window, cx);
         }
         cx.notify();
-    }
-
-    // ----- Drawing -----
-
-    fn render_header(&self, mode: ViewMode, cx: &mut Context<Self>) -> impl IntoElement {
-        let parts = paths::breadcrumb(&self.vault_root, &self.path);
-        let last = parts.len().saturating_sub(1);
-        let muted = cx.theme().muted_foreground;
-        let foreground = cx.theme().foreground;
-
-        let mut breadcrumb = h_flex().gap_1().text_sm().overflow_hidden();
-        for (index, part) in parts.into_iter().enumerate() {
-            if index > 0 {
-                breadcrumb =
-                    breadcrumb.child(Icon::new(IconName::ChevronRight).xsmall().text_color(muted));
-            }
-            let color = if index == last { foreground } else { muted };
-            breadcrumb = breadcrumb.child(div().text_color(color).child(part));
-        }
-
-        h_flex()
-            .justify_between()
-            // The switch gets the same space on its right as above and below it.
-            .pl_3()
-            .pr_1p5()
-            .py_1p5()
-            .gap_2()
-            .border_b_1()
-            .border_color(cx.theme().border)
-            .child(breadcrumb)
-            .child(view_mode_switch::render(mode, cx))
-    }
-
-    /// The Source/Split editor: monospace, like a code editor.
-    fn render_source_editor(&self) -> AnyElement {
-        let read_only = !self.can_save;
-        let editor = Editor::new(&self.editor)
-            .bordered(false)
-            .readonly(!self.can_save)
-            .size_full()
-            // The editor adds 12px of its own on the left, so this lines the
-            // text up with Live and Preview (24px from the edge in every mode).
-            .pl_3()
-            .pr_6()
-            .py_4()
-            .text_size(px(15.));
-        let menu_editor = self.editor.clone();
-        div()
-            .id("source-editor")
-            .test_support() // lets UI tests find and click it
-            .size_full()
-            .child(editor)
-            // The same right-click menu as Live mode, instead of gpui-kit's
-            // native one (which looks different and offers "Go to Definition").
-            .context_menu(move |menu, _, cx| {
-                let editor = menu_editor.read(cx);
-                edit_menu::build(
-                    menu,
-                    editor.focus_handle(cx),
-                    !editor.selected_range().is_empty(),
-                    read_only,
-                )
-            })
-            .into_any_element()
-    }
-}
-
-impl Render for EditorPane {
-    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let mode = SettingsStore::get(cx).view_mode;
-        let (line, column) = cursor::line_col(&self.text(cx), self.cursor(cx));
-
-        let body: AnyElement = match mode {
-            ViewMode::Preview => {
-                preview::render(&self.preview, self.note_dir(), cx.weak_entity()).into_any_element()
-            }
-            ViewMode::Split => h_resizable("editor-split")
-                .child(resizable_panel().child(self.render_source_editor()))
-                .child(resizable_panel().child(preview::render(
-                    &self.preview,
-                    self.note_dir(),
-                    cx.weak_entity(),
-                )))
-                .into_any_element(),
-            ViewMode::Live => self.live.clone().into_any_element(),
-            ViewMode::Source => self.render_source_editor(),
-        };
-
-        v_flex()
-            .id("editor-pane")
-            .key_context(EDITOR)
-            .on_action(cx.listener(Self::save_action))
-            .on_action(cx.listener(Self::format_bold))
-            .on_action(cx.listener(Self::format_italic))
-            .on_action(cx.listener(Self::format_link))
-            .size_full()
-            .bg(cx.theme().background)
-            .child(self.render_header(mode, cx))
-            .when(mode != ViewMode::Preview, |pane| {
-                pane.child(formatter_bar::render(cx.entity(), cx))
-            })
-            .child(div().flex_1().min_h_0().child(body))
-            .child(status_bar::render(line, column, self.char_count, cx))
     }
 }
 

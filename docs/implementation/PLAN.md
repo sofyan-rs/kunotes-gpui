@@ -246,6 +246,16 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done
 - [x] Open notes reload after a pull (unsaved typing wins). UI tests.
 - [ ] Manual check with a real GitHub repo on macOS, Windows (Git Credential Manager) and Fedora.
 
+## Phase 12: Locked notes
+
+**Goal:** encrypt notes that hold credentials (§6.12).
+
+- [x] `kunotes-core::lock`: vault password → encrypted vault key, encrypt/decrypt, lock/unlock a note, names (`.md.age`). Filesystem tests.
+- [x] `VaultLock`: unlock/set password in the background, auto-lock after 5 min, lock now (`secondary-shift-l`), forget on vault switch.
+- [x] Editor: lock screen, encrypted autosave, editors rebuilt empty on lock. Tree/tab lock icons, *Lock Note* / *Remove Lock* menu, header lock button.
+- [x] Password dialog (set twice with warning / unlock, wrong password message). UI test.
+- [ ] Manual check: lock a note in a git-synced vault and open it on a second computer.
+
 ## Feature checklist
 
 Legend: ✅ verified on that OS (UI/unit test run there, or screenshot) · 🧪 logic covered by CI tests on that OS, needs a visual check · ⬜ needs a manual check.

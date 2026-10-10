@@ -95,7 +95,15 @@ pub fn create_folder(dir: &Path, base: &str) -> Result<PathBuf> {
 pub fn rename(path: &Path, new_name: &str) -> Result<PathBuf> {
     let mut name = new_name.trim().to_string();
     validate_name(&name)?;
-    if !path.is_dir() && !name.to_lowercase().ends_with(".md") {
+    if crate::lock::is_locked_note(path) {
+        // A locked note stays locked: "Keys" or "Keys.md" → "Keys.md.age".
+        if !name.to_lowercase().ends_with(".md.age") {
+            if !name.to_lowercase().ends_with(".md") {
+                name.push_str(".md");
+            }
+            name.push_str(".age");
+        }
+    } else if !path.is_dir() && !name.to_lowercase().ends_with(".md") {
         name.push_str(".md");
     }
 

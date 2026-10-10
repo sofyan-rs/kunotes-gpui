@@ -8,6 +8,7 @@ use gpui_kit::{App, ClipboardItem, Context, Entity, Window};
 use kunotes_core::paths::relative_path;
 
 use super::file_tree::FileTree;
+use crate::actions::ToggleNoteLock;
 use crate::platform;
 use crate::ui::dialogs;
 use crate::vault_store::VaultStore;
@@ -43,6 +44,24 @@ pub fn build(
                         tree.start_new(p, true, window, cx)
                     });
                 }),
+            )
+            .separator();
+    }
+
+    if !is_dir {
+        // Lock (encrypt) or unlock the note; the workspace handles it.
+        let locked = kunotes_core::lock::is_locked_note(&path);
+        let (t, p) = (tree.clone(), path.clone());
+        menu = menu
+            .item(
+                PopupMenuItem::new(if locked { "Remove Lock" } else { "Lock Note" }).on_click(
+                    move |_, window, cx| {
+                        let action = ToggleNoteLock { path: p.clone() };
+                        after_menu_closes(&t, window, cx, move |_, window, cx| {
+                            window.dispatch_action(Box::new(action), cx);
+                        });
+                    },
+                ),
             )
             .separator();
     }

@@ -22,6 +22,7 @@ Open any folder on disk as a "vault", browse it in a sidebar, and edit markdown 
 - **Tabs** like VS Code: preview tabs, pin, close others/to the right/saved/all, drag to reorder, copy path, reveal in file manager; reopened on launch.
 - **Quick switcher** (`Ctrl/⌘+K`): filter all notes by name and open one from the keyboard.
 - **Live external sync:** changes made outside the app show up automatically.
+- **Locked notes:** right-click a note → *Lock Note* to encrypt it (for credentials). One password per vault; notes lock again after 5 minutes. Encrypted with [age](https://age-encryption.org), so they also open with the `age` tool: `age -d .kunotes-lock.age > key.txt`, then `age -d -i key.txt "Note.md.age"`.
 - **Git sync (optional):** enter a repository address (e.g. on GitHub) and the vault syncs automatically. Uses the git installed on your computer and its sign-in; a note changed on two computers keeps both versions.
 - **Remembers your last vault** across launches.
 

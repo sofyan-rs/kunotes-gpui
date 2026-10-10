@@ -1,4 +1,4 @@
-//! Dialogs: confirm moving a file or folder to the trash.
+//! Dialogs: confirm moving a file or folder to the trash, and About KuNotes.
 //! (Renaming happens inline in the file tree, see `sidebar/inline_edit.rs`.)
 
 use std::path::{Path, PathBuf};
@@ -38,4 +38,18 @@ fn display_name(path: &Path) -> String {
     path.file_name()
         .map(|name| name.to_string_lossy().into_owned())
         .unwrap_or_default()
+}
+
+/// The About box: name, version, what it is, and where the code lives.
+pub fn about(window: &mut Window, cx: &mut App) {
+    window.open_alert_dialog(cx, |alert, _, _| {
+        alert
+            .title(format!("KuNotes {}", env!("CARGO_PKG_VERSION")))
+            .description(
+                "A minimal markdown vault: open a folder, browse it, edit notes.\n\
+                 Files on disk are the only source of truth.\n\n\
+                 github.com/sofyan-rs/kunotes-gpui",
+            )
+            .ok_text("OK")
+    });
 }
