@@ -57,3 +57,27 @@ fn a_note_from_another_vault_key_is_refused() {
     let locked = lock::lock_note(&key_a, &note).unwrap();
     assert!(lock::read_note(&key_b, &locked).is_err());
 }
+
+#[test]
+fn changing_the_password_keeps_locked_notes_readable() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    let note = root.join("Keys.md");
+    fs::write(&note, "pin = 1234 🔑\n").unwrap();
+    let key = lock::create_password(root, "old password").unwrap();
+    let locked = lock::lock_note(&key, &note).unwrap();
+    let locked_bytes = fs::read(&locked).unwrap();
+
+    assert!(lock::change_password(root, "wrong one!", "new password").is_err());
+    assert!(
+        lock::change_password(root, "old password", "short").is_err(),
+        "too short"
+    );
+    let key = lock::change_password(root, "old password", "new password").unwrap();
+    assert_eq!(lock::read_note(&key, &locked).unwrap(), "pin = 1234 🔑\n");
+    assert_eq!(fs::read(&locked).unwrap(), locked_bytes, "notes untouched");
+
+    assert!(lock::unlock(root, "old password").is_err());
+    let key = lock::unlock(root, "new password").unwrap();
+    assert_eq!(lock::read_note(&key, &locked).unwrap(), "pin = 1234 🔑\n");
+}

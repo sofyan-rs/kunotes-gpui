@@ -117,6 +117,7 @@ kunotes-gpui/
 │               │   └── live/          # custom Live editor: mod, keys, input, layout, style, table, element
 │               ├── editor_area/       # tabs: EditorArea (mod.rs), tab_bar.rs, tests
 │               ├── git_sync_dialog.rs # enter the remote address / turn sync off
+│               ├── change_password_dialog.rs # change the locked-notes password
 │               ├── update_dialog.rs   # "update available" / "restart to finish"
 │               ├── quick_switcher.rs
 │               ├── quick_switcher_tests.rs
@@ -466,7 +467,7 @@ Optional, per vault. The user enters a repository address (e.g. `https://github.
 
 ---
 
-### 6.12 Locked notes (`kunotes-core/src/lock.rs`, `vault_lock.rs`, `ui/editor/locked.rs`, `ui/note_lock.rs`, `ui/unlock_dialog.rs`)
+### 6.12 Locked notes (`kunotes-core/src/lock.rs`, `vault_lock.rs`, `ui/editor/locked.rs`, `ui/note_lock.rs`, `ui/unlock_dialog.rs`, `ui/change_password_dialog.rs`)
 
 For notes holding credentials: the note is **encrypted on disk**, so it's unreadable in the vault folder and in its git remote.
 
@@ -476,6 +477,7 @@ For notes holding credentials: the note is **encrypted on disk**, so it's unread
 - **`VaultLock`** (owned by `Workspace`) holds the key in memory only while unlocked. It forgets it after 5 minutes without using a locked note (typing touches it), on `secondary-shift-l` / *Lock Notes Now* / the header's lock button, when another vault opens, and when the app quits.
 - **In the editor** (`Secret`: `No` / `Hidden` / `Shown`): a locked note opens hidden (lock screen with *Unlock…*) or, if unlocked, decrypted. Saving a shown note encrypts it (`lock::write_note` → `atomic_write`); a hidden one never saves. When the vault locks, a shown note saves with its own copy of the key, then its editors and preview are **rebuilt empty**, dropping the text and its undo history.
 - **Lock / Remove Lock** (tree menu, `ToggleNoteLock`): asks for the password if needed, saves open notes, writes the other form (`lock_note` checks the encrypted copy opens before anything else happens), then `VaultStore::replace_note` moves the tab to the new path and the old file to the OS trash. The notification reminds that the old plain copy is in the trash and older versions may remain in git history.
+- **Change Notes Password…** (File menu, `ChangeNotesPassword`): current password + new one twice. `lock::change_password` unlocks the vault key with the current password and rewrites only `.kunotes-lock.age` with the new one (`atomic_write`); the key stays the same, so locked notes aren't touched, and with git sync other computers pick up the new key file on their next sync. Afterwards notes are unlocked. Without a vault password yet, a notification says to lock a note first.
 - Limits: plaintext is in memory while shown (not zeroized); file names aren't encrypted.
 - Tests: `kunotes-core/tests/lock.rs` (password, round trip, wrong password, other vault's key), `ui/note_lock_tests.rs` (lock an open note, encrypted autosave, lock hides the text, unlock restores it).
 

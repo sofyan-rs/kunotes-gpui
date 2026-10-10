@@ -29,6 +29,9 @@ const LOCKED_SUFFIX: &str = ".age";
 /// Passwords shorter than this are refused when creating the vault password.
 pub const MIN_PASSWORD_LEN: usize = 8;
 
+/// The error text of `unlock` when the password is wrong.
+const WRONG_PASSWORD: &str = "Wrong password.";
+
 /// The unlocked vault key. Kept only in memory, only while notes are unlocked.
 pub struct VaultKey {
     identity: x25519::Identity,
@@ -65,18 +68,45 @@ pub fn create_password(root: &Path, password: &str) -> Result<VaultKey> {
     if has_password(root) {
         return Err(CoreError::Lock("This vault already has a password.".into()));
     }
+    check_new_password(password)?;
+    let key = VaultKey {
+        identity: x25519::Identity::generate(),
+    };
+    save_key(root, &key, password)?;
+    Ok(key)
+}
+
+/// Changes the vault password from `current` to `new`. The vault key stays
+/// the same, so locked notes don't change: only `.kunotes-lock.age` is
+/// rewritten. Returns the unlocked key.
+pub fn change_password(root: &Path, current: &str, new: &str) -> Result<VaultKey> {
+    check_new_password(new)?;
+    let key = unlock(root, current).map_err(|error| match error {
+        CoreError::Lock(message) if message == WRONG_PASSWORD => {
+            CoreError::Lock("The current password is wrong.".into())
+        }
+        error => error,
+    })?;
+    save_key(root, &key, new)?;
+    Ok(key)
+}
+
+fn check_new_password(password: &str) -> Result<()> {
     if password.chars().count() < MIN_PASSWORD_LEN {
         return Err(CoreError::Lock(format!(
             "Use at least {MIN_PASSWORD_LEN} characters."
         )));
     }
-    let identity = x25519::Identity::generate();
+    Ok(())
+}
+
+/// Writes the vault key to `.kunotes-lock.age`, encrypted with `password`.
+fn save_key(root: &Path, key: &VaultKey, password: &str) -> Result<()> {
     let recipient = age::scrypt::Recipient::new(SecretString::from(password.to_owned()));
-    let key_text = identity.to_string();
+    let key_text = key.identity.to_string();
     let encrypted = age::encrypt_and_armor(&recipient, key_text.expose_secret().as_bytes())
         .map_err(|error| CoreError::Lock(format!("Couldn't save the vault key: {error}")))?;
-    atomic_write(&root.join(KEY_FILE), encrypted.as_bytes())?;
-    Ok(VaultKey { identity })
+    atomic_write(&root.join(KEY_FILE), encrypted.as_bytes())
 }
 
 /// Unlocks the vault key with `password`. Takes about a second (on purpose).
@@ -84,7 +114,7 @@ pub fn unlock(root: &Path, password: &str) -> Result<VaultKey> {
     let bytes = fs::read(root.join(KEY_FILE))?;
     let identity = age::scrypt::Identity::new(SecretString::from(password.to_owned()));
     let key_text =
-        age::decrypt(&identity, &bytes).map_err(|_| CoreError::Lock("Wrong password.".into()))?;
+        age::decrypt(&identity, &bytes).map_err(|_| CoreError::Lock(WRONG_PASSWORD.into()))?;
     let key_text = String::from_utf8(key_text)
         .map_err(|_| CoreError::Lock("The vault key file is damaged.".into()))?;
     let identity = key_text

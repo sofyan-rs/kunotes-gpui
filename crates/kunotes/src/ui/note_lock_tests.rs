@@ -128,3 +128,25 @@ fn enter_in_the_password_dialog_unlocks(cx: &mut TestAppContext) {
     cx.run_until_parked();
     assert!(vault_lock.read_with(cx, |lock, _| lock.is_unlocked()));
 }
+
+#[gpui_kit::test]
+fn the_password_dialog_changes_the_vault_password(cx: &mut TestAppContext) {
+    let s = setup(cx);
+    lock::create_password(s.dir.path(), "password one").unwrap();
+    in_window(&s, cx, |window, cx| {
+        window.dispatch_action(Box::new(crate::actions::ChangeNotesPassword), cx)
+    });
+    cx.run_until_parked();
+    // The current password field has the focus; click the others to type.
+    in_window(&s, cx, |window, cx| window.input("password one", cx));
+    in_window(&s, cx, |window, cx| window.click("new-password", cx));
+    in_window(&s, cx, |window, cx| window.input("password two", cx));
+    in_window(&s, cx, |window, cx| window.click("repeat-password", cx));
+    in_window(&s, cx, |window, cx| window.input("password two", cx));
+    in_window(&s, cx, |window, cx| window.press("enter", cx));
+    cx.run_until_parked();
+
+    assert!(vault_lock(&s, cx).read_with(cx, |lock, _| lock.is_unlocked()));
+    assert!(lock::unlock(s.dir.path(), "password one").is_err());
+    assert!(lock::unlock(s.dir.path(), "password two").is_ok());
+}

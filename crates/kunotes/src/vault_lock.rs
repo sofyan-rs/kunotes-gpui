@@ -2,6 +2,7 @@
 //! the unlocked vault key in memory while they are (see `kunotes_core::lock`).
 //!
 //! - Unlocking takes the vault password (or sets it the first time).
+//!   The password can be changed later (File → Change Notes Password…).
 //! - The key is forgotten 5 minutes after locked notes were last used, when
 //!   the user locks them (`secondary-shift-l`), when another vault opens, and
 //!   when the app quits (memory is gone with the process).
@@ -82,14 +83,38 @@ impl VaultLock {
                 })
                 .await;
             let key = result.map_err(|error| error.to_string())?;
-            this.update(cx, |lock, cx| {
-                lock.key = Some(Arc::new(key));
-                lock.touch();
-                lock.start_idle_check(cx);
-                cx.notify();
-            })
-            .map_err(|_| "The window was closed.".to_string())
+            this.update(cx, |lock, cx| lock.set_key(key, cx))
+                .map_err(|_| "The window was closed.".to_string())
         })
+    }
+
+    /// Changes the vault password. Locked notes don't change (they use the
+    /// vault key, which stays the same), and they're unlocked afterwards.
+    /// The task's result is the error to show, if any.
+    pub fn change_password(
+        &mut self,
+        current: String,
+        new: String,
+        cx: &mut Context<Self>,
+    ) -> Task<Result<(), String>> {
+        let Some(root) = self.root.clone() else {
+            return Task::ready(Err("No vault is open.".into()));
+        };
+        cx.spawn(async move |this, cx| {
+            let result = cx
+                .background_spawn(async move { lock::change_password(&root, &current, &new) })
+                .await;
+            let key = result.map_err(|error| error.to_string())?;
+            this.update(cx, |lock, cx| lock.set_key(key, cx))
+                .map_err(|_| "The window was closed.".to_string())
+        })
+    }
+
+    fn set_key(&mut self, key: VaultKey, cx: &mut Context<Self>) {
+        self.key = Some(Arc::new(key));
+        self.touch();
+        self.start_idle_check(cx);
+        cx.notify();
     }
 
     /// Locks all locked notes now (open ones save first, see `EditorPane`).

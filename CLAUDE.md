@@ -48,7 +48,7 @@ Rust ≥ 1.92 (required by gpui-kit). Windows needs the MSVC toolchain. Fedora n
   - `watcher.rs`: `notify` events go through a channel to `refresh`.
   - `git_sync.rs`: the `GitSync` entity (when to sync, status); UI in `ui/git_sync_dialog.rs` and `ui/sidebar/sync_footer.rs`.
   - `updater.rs`: the `Updater` entity (check GitHub Releases at launch / on demand, install); dialogs in `ui/update_dialog.rs`.
-  - `vault_lock.rs`: the `VaultLock` entity (vault key in memory, auto-lock); UI in `ui/unlock_dialog.rs`, `ui/note_lock.rs`, `ui/editor/locked.rs`.
+  - `vault_lock.rs`: the `VaultLock` entity (vault key in memory, auto-lock); UI in `ui/unlock_dialog.rs`, `ui/change_password_dialog.rs`, `ui/note_lock.rs`, `ui/editor/locked.rs`.
   - `platform.rs`: the **only** place for `#[cfg(target_os)]` and OS wording.
   - `ui/`: views grouped by feature: `workspace.rs`, `title_bar.rs`, `sidebar/` (`mod.rs`, `file_tree.rs`, `inline_edit.rs`, `keyboard.rs`, `context_menu.rs`), `editor/` (`mod.rs` = EditorPane, `drawing.rs` = header/render, `saving.rs` = autosave + preview refresh, `formatting.rs` = toolbar commands/images/task toggle, `markdown_style.rs` = Source styling, `view_mode_switch.rs`, `formatter_bar.rs`, `preview.rs`, `status_bar.rs`, `edit_menu.rs` = right-click menu of Live and Source, `live/` = custom Live editor: `mod.rs`, `keys.rs`, `input.rs`, `layout.rs`, `style.rs`, `table.rs`, `element.rs`), `editor_area/` (tabs: `mod.rs` = EditorArea, `tab_bar.rs`), `quick_switcher.rs`, `dialogs.rs`, `empty_state.rs`. Tab rules are pure in `kunotes-core/src/tabs.rs`.
 

@@ -10,16 +10,19 @@ use gpui_kit::{
 use kunotes_core::settings::ViewMode;
 
 use crate::actions::{
-    About, CheckForUpdates, CloseAllTabs, CloseOtherTabs, CloseSavedTabs, CloseTab,
-    CloseTabsToTheRight, CloseVault, CollapseFolders, CycleViewMode, DeleteSelection, LockNotes,
-    NewFile, NewFolder, NextTab, OpenVault, PreviousTab, QuickSwitcher, RenameSelection,
+    About, ChangeNotesPassword, CheckForUpdates, CloseAllTabs, CloseOtherTabs, CloseSavedTabs,
+    CloseTab, CloseTabsToTheRight, CloseVault, CollapseFolders, CycleViewMode, DeleteSelection,
+    LockNotes, NewFile, NewFolder, NextTab, OpenVault, PreviousTab, QuickSwitcher, RenameSelection,
     ToggleNoteLock, TogglePinTab, ToggleSidebar, ViewLive, ViewPreview, ViewSource, ViewSplit,
     WORKSPACE,
 };
 use crate::git_sync::{GitSync, GitSyncEvent};
 use crate::settings_store::SettingsStore;
 use crate::ui::editor_area::EditorArea;
-use crate::ui::{dialogs, note_lock, quick_switcher, sidebar::Sidebar, title_bar, update_dialog};
+use crate::ui::{
+    change_password_dialog, dialogs, note_lock, quick_switcher, sidebar::Sidebar, title_bar,
+    update_dialog,
+};
 use crate::updater::{Updater, UpdaterEvent};
 use crate::vault_lock::VaultLock;
 use crate::vault_store::{VaultEvent, VaultStore};
@@ -310,6 +313,15 @@ impl Workspace {
         self.vault_lock.update(cx, |lock, cx| lock.lock_now(cx));
     }
 
+    fn change_notes_password(
+        &mut self,
+        _: &ChangeNotesPassword,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        change_password_dialog::open(self.vault_lock.clone(), window, cx);
+    }
+
     fn toggle_note_lock(
         &mut self,
         action: &ToggleNoteLock,
@@ -390,6 +402,7 @@ impl Render for Workspace {
             // `cx.listener` turns a method into a callback that gets `&mut self`.
             .on_action(cx.listener(Self::open_vault))
             .on_action(cx.listener(Self::lock_notes))
+            .on_action(cx.listener(Self::change_notes_password))
             .on_action(cx.listener(Self::collapse_folders))
             .on_action(cx.listener(Self::toggle_note_lock))
             .on_action(cx.listener(Self::about))
