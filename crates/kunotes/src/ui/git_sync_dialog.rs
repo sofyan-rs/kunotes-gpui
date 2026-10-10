@@ -14,7 +14,7 @@ pub fn open(git_sync: Entity<GitSync>, window: &mut Window, cx: &mut App) {
     let is_on = current.is_some();
     let url = cx.new(|cx| {
         InputState::new(window, cx)
-            .placeholder("https://github.com/you/notes.git")
+            .placeholder("git@github.com:you/notes.git  or  https://github.com/you/notes.git")
             .default_value(current.unwrap_or_default())
     });
     // Enter in the field connects, like the button.
@@ -57,8 +57,9 @@ pub fn open(git_sync: Entity<GitSync>, window: &mut Window, cx: &mut App) {
                 ))
                 .child(Input::new(&content_url))
                 .child(div().text_xs().text_color(muted).child(
-                    "Uses the git installed on this computer and its sign-in \
-                     (for GitHub: `gh auth login` or an SSH key).",
+                    "SSH address (git@github.com:…) if you use an SSH key; HTTPS address \
+                     if you're signed in with the GitHub CLI (`gh auth login`). \
+                     KuNotes uses the git installed on this computer.",
                 ))
                 .child(buttons),
         )

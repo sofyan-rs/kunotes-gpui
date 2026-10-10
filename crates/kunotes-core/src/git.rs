@@ -15,6 +15,7 @@
 
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output, Stdio};
+use std::sync::OnceLock;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use crate::error::{CoreError, Result};
@@ -329,6 +330,17 @@ fn git_command(root: &Path) -> Command {
         .env("LC_ALL", "C") // English messages, so errors can be recognised
         .args(["-c", "core.quotepath=false"])
         .stdin(Stdio::null());
+    // Signing in to GitHub over HTTPS: let git borrow the GitHub CLI's login,
+    // like `gh auth setup-git` would, without changing the user's git config.
+    // (gh users with the SSH protocol don't have this set up.)
+    if let Some(gh) = github_cli() {
+        // The helper is run by a shell, so quote the path and use `/`.
+        let gh = gh.to_string_lossy().replace('\\', "/");
+        command.args([
+            "-c".to_string(),
+            format!("credential.https://github.com.helper=!\"{gh}\" auth git-credential"),
+        ]);
+    }
     // A windowed app on Windows would flash a console window for each git run.
     #[cfg(windows)]
     {
@@ -337,6 +349,40 @@ fn git_command(root: &Path) -> Command {
         command.creation_flags(CREATE_NO_WINDOW);
     }
     command
+}
+
+/// The GitHub CLI (`gh`), if it's installed. Looked up once.
+///
+/// Apps started from the Finder or a desktop launcher don't get the terminal's
+/// `PATH`, so the usual install folders are searched too.
+fn github_cli() -> Option<&'static Path> {
+    static GH: OnceLock<Option<PathBuf>> = OnceLock::new();
+    GH.get_or_init(|| find_program("gh")).as_deref()
+}
+
+fn find_program(name: &str) -> Option<PathBuf> {
+    let file = format!("{name}{}", std::env::consts::EXE_SUFFIX);
+    let mut dirs: Vec<PathBuf> = std::env::var_os("PATH")
+        .map(|path| std::env::split_paths(&path).collect())
+        .unwrap_or_default();
+    dirs.extend(
+        [
+            "/opt/homebrew/bin",
+            "/usr/local/bin",
+            "/usr/bin",
+            "/home/linuxbrew/.linuxbrew/bin",
+        ]
+        .map(PathBuf::from),
+    );
+    if let Some(home) = dirs::home_dir() {
+        dirs.push(home.join(".local").join("bin"));
+    }
+    if let Some(program_files) = std::env::var_os("ProgramFiles") {
+        dirs.push(PathBuf::from(program_files).join("GitHub CLI"));
+    }
+    dirs.into_iter()
+        .map(|dir| dir.join(&file))
+        .find(|candidate| candidate.is_file())
 }
 
 /// Runs git and returns what it printed, or an error with its message.
@@ -380,8 +426,14 @@ fn friendly_error(stderr: &str) -> String {
         || lower.contains("terminal prompts disabled")
         || lower.contains("permission denied")
     {
-        return "Git couldn't sign in to the remote. Sign in once outside KuNotes \
-                (for GitHub: `gh auth login`, or set up an SSH key), then sync again."
+        return "Git couldn't sign in to the remote. For GitHub, sign in with the GitHub CLI \
+                (`gh auth login`), or use the SSH address (git@github.com:you/notes.git) \
+                if you have an SSH key. Then sync again."
+            .into();
+    }
+    if lower.contains("host key verification failed") {
+        return "SSH doesn't know this server yet. Run `ssh -T git@github.com` once in a \
+                terminal (answer \"yes\"), then sync again."
             .into();
     }
     if lower.contains("repository not found")
