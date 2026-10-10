@@ -417,3 +417,13 @@ fn git_sync_can_be_set_up_from_the_sidebar(cx: &mut TestAppContext) {
         );
     });
 }
+
+#[gpui_kit::test]
+fn about_box_has_a_clickable_repo_link(cx: &mut TestAppContext) {
+    let s = setup(cx);
+    in_window(&s, cx, |window, cx| {
+        window.dispatch_action(Box::new(crate::actions::About), cx)
+    });
+    cx.run_until_parked();
+    in_window(&s, cx, |window, cx| window.click("about-repo-link", cx));
+}
