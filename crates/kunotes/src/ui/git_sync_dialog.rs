@@ -2,10 +2,14 @@
 //! or turn sync off.
 
 use gpui_kit::component::button::{Button, ButtonVariants as _};
-use gpui_kit::component::input::{Input, InputEvent, InputState};
+use gpui_kit::component::input::{Input, InputState};
 use gpui_kit::component::{ActiveTheme as _, WindowExt as _, h_flex, v_flex};
-use gpui_kit::{App, AppContext as _, Entity, ParentElement as _, Styled as _, Window, div, px};
+use gpui_kit::{
+    App, AppContext as _, Entity, InteractiveElement as _, ParentElement as _, Styled as _, Window,
+    div, px,
+};
 
+use crate::actions::{FORM, SubmitForm};
 use crate::git_sync::GitSync;
 
 /// Opens the dialog for the vault `git_sync` belongs to.
@@ -17,16 +21,6 @@ pub fn open(git_sync: Entity<GitSync>, window: &mut Window, cx: &mut App) {
             .placeholder("git@github.com:you/notes.git  or  https://github.com/you/notes.git")
             .default_value(current.unwrap_or_default())
     });
-    // Enter in the field connects, like the button.
-    let (enter_sync, enter_url) = (git_sync.clone(), url.clone());
-    window
-        .subscribe(&url, cx, move |_, event: &InputEvent, window, cx| {
-            if let InputEvent::PressEnter { .. } = event {
-                connect(&enter_sync, &enter_url, window, cx);
-            }
-        })
-        .detach();
-
     let content_url = url.clone();
     window.open_dialog(cx, move |dialog, _, cx| {
         let muted = cx.theme().muted_foreground;
@@ -48,8 +42,14 @@ pub fn open(git_sync: Entity<GitSync>, window: &mut Window, cx: &mut App) {
                 .on_click(move |_, window, cx| connect(&connect_sync, &connect_url, window, cx)),
         );
 
+        let (enter_sync, enter_url) = (git_sync.clone(), content_url.clone());
         dialog.w(px(480.)).title("Git Sync").child(
             v_flex()
+                // Enter in the field connects, like the button (see `actions::FORM`).
+                .key_context(FORM)
+                .on_action(move |_: &SubmitForm, window, cx| {
+                    connect(&enter_sync, &enter_url, window, cx)
+                })
                 .gap_3()
                 .child(div().text_sm().text_color(muted).child(
                     "Keep this vault in a git repository (like a GitHub repo). \

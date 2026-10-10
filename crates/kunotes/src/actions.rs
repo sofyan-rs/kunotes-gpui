@@ -55,6 +55,10 @@ actions!(
 // Quick switcher list navigation. Only active while the switcher is open.
 actions!(quick_switcher, [SwitcherUp, SwitcherDown, SwitcherOpen]);
 
+// Enter in our dialogs' forms (password, git sync). gpui-kit's dialog handles
+// Enter itself before a text field sees it, so forms bind it in their own context.
+actions!(form, [SubmitForm]);
+
 // Editor commands. Only active while the editor pane has focus.
 actions!(editor, [SaveNow, FormatBold, FormatItalic, FormatLink]);
 
@@ -78,6 +82,9 @@ pub const EDITOR: &str = "EditorPane";
 
 /// Key context of the quick switcher dialog.
 pub const QUICK_SWITCHER: &str = "QuickSwitcher";
+
+/// Key context of a form inside a dialog (Enter submits it).
+pub const FORM: &str = "Form";
 
 /// Key context of the file tree. Bindings here only work while the tree has focus,
 /// so e.g. Backspace deletes a file only when you're in the tree, never while typing.
@@ -111,6 +118,7 @@ pub fn bind_keys(cx: &mut App) {
         KeyBinding::new("down", SwitcherDown, Some(QUICK_SWITCHER)),
         // Caught here, before the dialog's own Enter (which would just close it).
         KeyBinding::new("enter", SwitcherOpen, Some(QUICK_SWITCHER)),
+        KeyBinding::new("enter", SubmitForm, Some(FORM)),
         KeyBinding::new("up", SelectPrevious, Some(FILE_TREE)),
         KeyBinding::new("down", SelectNext, Some(FILE_TREE)),
         KeyBinding::new("right", ExpandFolder, Some(FILE_TREE)),

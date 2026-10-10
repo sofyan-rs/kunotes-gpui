@@ -2,14 +2,15 @@
 //! the first time a note is locked.
 
 use gpui_kit::component::button::{Button, ButtonVariants as _};
-use gpui_kit::component::input::{Input, InputEvent, InputState};
+use gpui_kit::component::input::{Input, InputState};
 use gpui_kit::component::{ActiveTheme as _, WindowExt as _, h_flex, v_flex};
 use gpui_kit::{
-    App, AppContext as _, Context, Entity, IntoElement, ParentElement as _, Render, Styled as _,
-    Subscription, Window, div, prelude::FluentBuilder as _, px,
+    App, AppContext as _, Context, Entity, InteractiveElement as _, IntoElement,
+    ParentElement as _, Render, Styled as _, Window, div, prelude::FluentBuilder as _, px,
 };
 use kunotes_core::lock::MIN_PASSWORD_LEN;
 
+use crate::actions::{FORM, SubmitForm};
 use crate::vault_lock::VaultLock;
 
 /// Runs after a successful unlock (e.g. "now lock this note").
@@ -57,7 +58,6 @@ struct UnlockForm {
     error: Option<String>,
     busy: bool,
     then: Option<AfterUnlock>,
-    _subscriptions: Vec<Subscription>,
 }
 
 impl UnlockForm {
@@ -78,24 +78,6 @@ impl UnlockForm {
                 .masked(true)
                 .placeholder("Type it again")
         });
-        // Enter in either field submits.
-        let on_enter = |form: &mut Self,
-                        _: Entity<InputState>,
-                        event: &InputEvent,
-                        window: &mut Window,
-                        cx: &mut Context<Self>| {
-            if let InputEvent::PressEnter { .. } = event {
-                form.submit(window, cx);
-            }
-        };
-        let subscriptions = vec![
-            cx.subscribe_in(&password, window, move |form, input, event, window, cx| {
-                on_enter(form, input.clone(), event, window, cx)
-            }),
-            cx.subscribe_in(&repeat, window, move |form, input, event, window, cx| {
-                on_enter(form, input.clone(), event, window, cx)
-            }),
-        ];
         UnlockForm {
             vault_lock,
             creating,
@@ -104,7 +86,6 @@ impl UnlockForm {
             error: None,
             busy: false,
             then,
-            _subscriptions: subscriptions,
         }
     }
 
@@ -168,6 +149,9 @@ impl Render for UnlockForm {
             "Enter the vault password to unlock locked notes."
         };
         v_flex()
+            // Enter in either field submits (see `actions::FORM`).
+            .key_context(FORM)
+            .on_action(cx.listener(|form, _: &SubmitForm, window, cx| form.submit(window, cx)))
             .gap_3()
             .child(div().text_sm().text_color(muted).child(intro))
             .child(Input::new(&self.password))

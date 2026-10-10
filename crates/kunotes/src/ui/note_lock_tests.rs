@@ -112,3 +112,19 @@ fn a_locked_note_is_encrypted_on_disk_and_hidden_when_the_vault_locks(cx: &mut T
     unlock(&s, cx, "password one");
     assert_eq!(text(&s, cx), "# Welcome\napi_key=xyz");
 }
+
+#[gpui_kit::test]
+fn enter_in_the_password_dialog_unlocks(cx: &mut TestAppContext) {
+    let s = setup(cx);
+    lock::create_password(s.dir.path(), "password one").unwrap();
+    let vault_lock = vault_lock(&s, cx);
+    let dialog_lock = vault_lock.clone();
+    in_window(&s, cx, |window, cx| {
+        crate::ui::unlock_dialog::open(dialog_lock, None, window, cx)
+    });
+    cx.run_until_parked();
+    in_window(&s, cx, |window, cx| window.input("password one", cx));
+    in_window(&s, cx, |window, cx| window.press("enter", cx));
+    cx.run_until_parked();
+    assert!(vault_lock.read_with(cx, |lock, _| lock.is_unlocked()));
+}
